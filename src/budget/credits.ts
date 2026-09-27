@@ -21,3 +21,30 @@ export function formatCredits(value: Credits): string {
   const fraction = (value % SCALE).toString().padStart(18, "0").replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
+
+/** Largest value representable by the persisted decimal format (18 integer digits). */
+export const MAX_CREDITS = (10n ** 18n * SCALE - 1n) as Credits;
+export const ZERO_CREDITS = 0n as Credits;
+
+export function isCredits(value: unknown): value is Credits {
+  return typeof value === "bigint" && value >= 0n && value <= MAX_CREDITS;
+}
+
+/** Exact addition; overflow beyond the persisted format fails rather than wraps or rounds. */
+export function addCredits(...values: Credits[]): Credits {
+  let total = 0n;
+  for (const value of values) {
+    if (!isCredits(value)) throw new Error("Invalid credit amount.");
+    total += value;
+  }
+  if (total > MAX_CREDITS) throw new Error("Credit total exceeds the supported range.");
+  return total as Credits;
+}
+
+/** Exact subtraction; a negative result is an accounting error, never clamped. */
+export function subtractCredits(minuend: Credits, subtrahend: Credits): Credits {
+  if (!isCredits(minuend) || !isCredits(subtrahend) || subtrahend > minuend) {
+    throw new Error("Credit subtraction would be negative.");
+  }
+  return (minuend - subtrahend) as Credits;
+}

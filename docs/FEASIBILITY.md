@@ -60,7 +60,9 @@ Terminal success (and therefore tool execution) is published only after `settle(
 
 **Known SDK limitation:** Pi 0.87.1's `createAgentSession` accepts only the concrete `ModelRuntime` class, whose factory always installs built-in providers with ambient credential discovery; there is no supported way to inject only an explicit `Models` collection. The test fixture (`test/support/fake-pi.ts`) therefore uses a fail-closed proxy facade cast to `ModelRuntime`. **This cast is test-only and must not ship as the live integration.** Before a live adapter, choose and document one of: an upstream SDK injection point, a pinned and tested facade with an exhaustive method audit, or bypassing `AgentSession` with a BoC-owned agent loop over `pi-agent-core`. Also hide `navigateTree` summaries, `summarizeForBugReport`, deferred APIs, provider registration, and refresh from any BoC-facing wrapper.
 
-These tests prove the dispatch boundary with fakes only. They do not prove a real provider's internal retries/fallbacks are bounded, nor provide a ledger, pricing, or credit receipts.
+When the guard gives up after admission without settling, it calls the optional `Reservation.abandon` with `not-dispatched` or `outcome-uncertain`; this is an annotation only and never releases the reservation. `test/ledger-admission.test.ts` runs the same guard and a fake-provider session against the durable ledger (D012) with a synthetic meter.
+
+These tests prove the dispatch boundary with fakes only. They do not prove a real provider's internal retries/fallbacks are bounded, nor provide pricing or authoritative credit receipts.
 
 ## Solver isolation decision
 

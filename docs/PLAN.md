@@ -3,7 +3,8 @@
 ## Current state
 
 - Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
-- No live provider adapter, AoC client, solver, durable ledger, or TUI yet. Both real providers are deliberately ineligible for chargeable work; see `FEASIBILITY.md`.
+- Durable four-counter credit ledger (`src/budget/ledger.ts`) and ledger-backed `Admission` (`src/budget/admission.ts`) implemented and tested offline with fake providers; see D012. No production `CreditMeter` exists, so nothing can be admitted for a real provider.
+- No live provider adapter, AoC client, solver, or TUI yet. Both real providers are deliberately ineligible for chargeable work; see `FEASIBILITY.md`.
 - A synthetic Docker isolation probe passed locally; production execution and dependency acquisition remain unimplemented.
 - Repository: `https://github.com/bendiscz/boc.git`, branch `main`.
 - Only branch: `main` (`master` deleted). History was rewritten once on operator request to set the author to Martin Benda <martin@bendovi.cz>, configured locally for this repository.
@@ -16,7 +17,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: milestone 2 — implement the durable four-counter credit ledger (`src/budget/ledger.ts`) behind the `Admission`/`Reservation` interface in `src/pi/guarded-streams.ts`: atomic multi-counter reservation with exact `Credits`, crash-safe persistence (write-ahead journal + fsync + atomic rename, single-writer lock), reconciliation from authoritative receipts, and held-on-uncertainty semantics that survive restart. Then define event/puzzle/attempt identifiers and the private artifact layout. Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
+Next concrete task: milestone 2 — define event/puzzle/attempt identifiers (extend `src/state/ids.ts`, which so far has only `PuzzleId` = `day-NN`), puzzle/attempt state transitions, and the private artifact layout under `storageDir` with a readable index; then a durable run-state/event store reusing the ledger's journal discipline (fsync-before-ack, torn-tail handling, single-writer lock). Also add a `boc ledger status` CLI view and an operator reconciliation command (settle a held reservation from evidence, acknowledge overrun) before live use. Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -35,9 +36,9 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 ### 2. Durable state and credit admission
 
 - [ ] Define event/puzzle/attempt identifiers, state transitions, and private artifact layout with a readable index.
-- [ ] Implement atomic persistence, structured events, recovery, and single-writer/concurrency coordination.
-- [ ] Implement exact credit arithmetic, atomic multi-limit reservations, reconciliation, and conservative handling of uncertain calls.
-- [ ] Test concurrent admissions, exhaustion, restart/crash cases, separate credit pools, and unaccounted-operation rejection.
+- [ ] Implement atomic persistence, structured events, recovery, and single-writer/concurrency coordination. (Done for the credit ledger; run/puzzle state store outstanding.)
+- [x] Implement exact credit arithmetic, atomic multi-limit reservations, reconciliation, and conservative handling of uncertain calls.
+- [x] Test concurrent admissions, exhaustion, restart/crash cases, separate credit pools, and unaccounted-operation rejection.
 
 ### 3. AoC transport and scheduling
 
@@ -104,3 +105,10 @@ Admission-boundary verification (2026-09-27):
 - `npm run check` — 46 offline tests (15 guard unit tests, 9 fake-provider `AgentSession` tests) passed with lint, type checks, and build.
 - Independent review: two P1s (compaction test never dispatched; request-rewriting options forwarded after admission) and five P2s (denials faulted the guard; aborted terminals were settled; forged-model test was blocked by the fixture, not the guard; retry tests could not observe retries; incorrect dedupe claim). All fixed and covered by tests; doc claims corrected.
 - Probe confirmed Pi `setModel` accepts a forged same-provider model; the guard (not the fixture) rejects its dispatch before admission (regression test).
+
+Credit-ledger verification (2026-09-27):
+
+- `npm run check` — lint, type checks, 67 offline tests (14 ledger, 7 ledger-admission including a fake-provider `AgentSession` tool loop stopped by the durable pool limit), and build passed.
+- Covered: exact boundaries on each of the four counters, per-puzzle vs event scope, shared and separate pools, 20 concurrent admissions against a 3-slot limit, invalid/zero/duplicate/unknown-scope rejection, restart with orphaned and uncertain holds, stale-lock refusal and dead-PID breaking, torn-tail recovery, corruption and config-mismatch refusal, persistent overrun blocking until acknowledged, injected fsync failure faulting the ledger while counting the reservation, private file modes, close draining queued work, abort-after-admission and transport-failure annotations.
+- Independent review (child Pi, read-only): addressed abort-after-reservation annotation (new optional `Reservation.abandon`, annotation only), full-line appends (`appendFile`), parent-directory fsync, and a close-draining test. The claim that close could race queued operations was checked and is not reachable (closure is checked synchronously before enqueuing); covered by a test. PID reuse can block `breakStaleLock` (refusal is intentional; manual removal after review is the override). Receipt uniqueness is not enforced (duplicate receipts over-count, which errs safe).
+- Fsync-failure behavior was tested by patching `FileHandle.prototype.sync`, not by real disk faults. No power-loss testing. No live provider or AoC activity.

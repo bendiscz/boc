@@ -63,3 +63,13 @@ Select a separate non-root, resource-limited, networkless Linux container as the
 ## D011 — Admission at the provider-stream boundary
 
 Enforce credit admission inside the provider `stream`/`streamSimple` implementation handed to Pi, not around `session.prompt()` or `agent.streamFunction`, because tool loops, compaction, summaries, and cache warming each issue their own dispatches. One reservation per dispatch attempt; no implicit retries; completion is withheld until authoritative settlement; uncertain outcomes stay reserved and fault the boundary. Model selection in Pi is not a security control, so the guard re-checks the exact model on every dispatch. The Pi SDK's concrete `ModelRuntime` requirement is an open integration issue (see FEASIBILITY.md); the facade cast is test-only.
+
+## D012 — Journal-only durable credit ledger
+
+The credit ledger for one event lives at `<storageDir>/ledger/<year>/` as an append-only JSON-lines journal (`journal.jsonl`) plus an exclusive lock file (`ledger.lock`). There is no snapshot/rename step: journals are small (one record per model call), and replay is simple to audit. Each record carries a contiguous sequence number, is validated before writing, and is fsynced before its effect is acknowledged. A reservation is therefore durable before the guard may dispatch. On open, a torn final line (never acknowledged) is truncated; any other malformed, out-of-order, or inconsistent record refuses to open.
+
+Check-and-reserve runs inside one in-process serialized queue against all four counters, so concurrent workers cannot oversubscribe. Cross-process exclusion uses the lock file created with `O_EXCL`. A stale lock is broken only for a dead PID on the same host; anything else requires manual review.
+
+Reservations leave the held state only through a recorded authoritative actual charge (`settle`). Unknown outcomes, missing receipts, aborts after admission, and restarts leave reservations held (annotated `uncertain` or reported as `orphaned`); nothing auto-releases them. An actual charge above the reservation is recorded truthfully and blocks all admission until an operator acknowledgement record. An I/O failure faults the ledger for the process lifetime and counts a possibly written reservation as held.
+
+History must match configuration: a journal referencing a subscription or pool that is renamed, removed, rebound, or given a different provider/unit refuses to open, so edits cannot reset usage. Lowering limits is allowed. Explicit migration tooling is future work. `CreditMeter` (bound + authoritative receipt) is the provider-specific contract; no production meter exists, so provider eligibility gates are unchanged.

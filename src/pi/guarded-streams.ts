@@ -27,6 +27,11 @@ export interface Reservation {
    * Pi's token counts and usage.cost are not authoritative subscription credits.
    */
   settle(message: AssistantMessage): Promise<void>;
+  /**
+   * Optional annotation when the guard gives up without settling. It MUST NOT
+   * release the reservation: "not-dispatched" is advisory for later reconciliation.
+   */
+  abandon?(reason: "not-dispatched" | "outcome-uncertain"): Promise<void>;
 }
 
 export interface Admission {
@@ -143,7 +148,9 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
     // invoking the adapter, and every path still resolves the terminal stream result.
     void (async () => {
       // Once true, any failure is an uncertain charge: keep it held and fault.
-      let reserved = false;
+      let reservation: Reservation | undefined;
+      let dispatched = false;
+      let settling = false;
       try {
         if (faulted) throw new Error("Dispatch boundary is faulted.");
         if (setupError) throw new Error("Request options are not allowed.");
@@ -157,19 +164,20 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
         }
         signal?.throwIfAborted();
         // Admission sees exactly the frozen snapshot the transport will receive.
-        const reservation = await config.admission.reserve({
+        const admitted = await config.admission.reserve({
           id: randomUUID(),
           model: snapshot.model,
           context: snapshot.context,
           options: snapshot.options,
           signal,
         });
-        if (!reservation || typeof reservation.settle !== "function") {
+        if (!admitted || typeof admitted.settle !== "function") {
           throw new Error("No reservation returned.");
         }
-        reserved = true;
+        reservation = admitted;
         signal?.throwIfAborted();
         if (faulted) throw new Error("Another request faulted while admission was pending.");
+        dispatched = true;
         const upstream = config.transport[mode](
           structuredClone(snapshot.model),
           structuredClone(snapshot.context),
@@ -191,6 +199,7 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
             }
             // Do not expose terminal success (which enables tool execution) until
             // settlement succeeds. Settlement failure keeps the reservation held.
+            settling = true;
             await reservation.settle(structuredClone(message));
             if (event.type === "error") {
               output.push({ type: "error", reason: "error", error: failure(false) });
@@ -207,7 +216,15 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
         throw new Error("Transport ended without a terminal receipt.");
       } catch {
         // Pre-admission denials hold nothing and leave the boundary usable.
-        if (reserved) faulted = true;
+        if (reservation) {
+          faulted = true;
+          // Settlement owns its own failure annotation; otherwise annotate here.
+          if (!settling && typeof reservation.abandon === "function") {
+            await reservation
+              .abandon(dispatched ? "outcome-uncertain" : "not-dispatched")
+              .catch(() => {});
+          }
+        }
         const error = failure(signal?.aborted === true);
         output.push({ type: "error", reason: error.stopReason as "error" | "aborted", error });
         output.end();
