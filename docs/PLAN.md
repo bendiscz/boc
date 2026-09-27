@@ -3,6 +3,11 @@
 ## Current state
 
 - Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
+- `boc run <config> [--days ...]` (`src/app.ts`):
+  - It fails closed before any storage, ledger, or AoC access, because the production adapter registry is intentionally empty.
+  - It sleeps until each release, retries unlock a bounded number of times, and never refetches solved days.
+  - It stops the run on a provider fault.
+  - Ctrl-C stops gracefully (exit code 130) and the run can be resumed.
 - Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
 - Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
 - Offline AoC transport (D014, `AOC.md`): pinned-host cookie-file client, conservative response parsers, release calendar, and a cached, write-ahead submission service, tested only with fake transports and synthetic HTML.
@@ -21,16 +26,13 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: finish milestone 4 and begin milestone 5.
+Next concrete task: milestone 5.
 
-1. Add a solution-retrieval audit test (milestone 4, last item). It should enumerate the solver tool set, and assert the executor arguments and the absence of any network, host-file, or credential path reachable from tools. It should also run the opt-in Docker probe for DNS/HTTP failure, if not already covered.
-2. Add `boc run <config> [--past <days>] [--headless]` (`src/app.ts`). It should:
-   - load the config, open the ledger, run store, and AoC service, and wait for releases with `waitForRelease`;
-   - bind subscriptions through `selectSubscription` plus a provider adapter registry. The registry is empty today, so the command must fail closed with a clear "no eligible provider" message;
-   - regenerate the private views after each part;
-   - shut down gracefully on SIGINT (abort signal; journals already stay consistent).
-   Test it with injected fake adapters.
-3. Build a minimal TUI and headless progress output from the `onEvent` stream and `renderEventSummary`.
+1. Add a live terminal view for `boc run` (`--tui`, with headless timestamped lines as the default). It should show the current puzzle and part, the phase, the subscription, spent/reserved/remaining credits per pool (from `ledger.status`), recent events, and results. Keep it dependency-light (`pi-tui` is available), and keep headless output for logs and CI.
+2. Add a private per-run log file with the timestamped `onEvent` lines under `runs/<year>/`, linked from `SUMMARY.md`.
+3. Add operator tooling for the known gaps: override a reconciled `not-correct` for an answer that was never judged, and list and settle held reservations (the latter already exists as `boc ledger settle`).
+
+Milestone 6 stays blocked until a provider meets its credit gate (FEASIBILITY.md). The first live step then is a provider adapter in `src/providers/`, registered in `PRODUCTION_ADAPTERS`, with its own evidence.
 
 Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -68,12 +70,12 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 - [x] Implement isolated Python/uv, Node.js, Go, and Rust execution with resource limits and controlled dependencies. (`SANDBOX.md`; hash-pinned PyPI acquisition outstanding.)
 - [x] Build the solve → test → propose answer → trusted submit → next part loop. (`src/solver/run.ts`, fake transports only.)
 - [x] Add budget-aware subscription/model selection and compliant fallback that preserves all reservations and limits. (`src/budget/select.ts`; the ledger still admits every call.)
-- [ ] Verify no solution-fetching path exists through tools, subprocesses, or unrelated host files.
+- [x] Verify no solution-fetching path exists through tools, subprocesses, or unrelated host files. (`test/originality.test.ts`; the Docker probe checks that DNS and HTTP fail inside the container.)
 
 ### 5. Terminal experience and recoverability
 
 - [ ] Show puzzle, phase, provider, spent/reserved/remaining credits by pool, recent actions, and results.
-- [ ] Provide headless mode, graceful shutdown, resumable runs, and clear terminal failure states.
+- [x] Provide headless mode, graceful shutdown, resumable runs, and clear terminal failure states. (`boc run`; TUI still pending.)
 - [ ] Produce a human-readable private run summary and navigable per-puzzle artifacts.
 
 ### 6. Authorized historical evaluation
@@ -182,3 +184,20 @@ Solve-loop verification (2026-09-27):
   - Fixed: `maxAttemptsPerPart` is validated.
   - Not changed: an answer proposed from settled turns before a later provider fault is kept as a proposal. A proposal ends the run, so this is theoretical, and the answer came from admitted, settled work.
   - Not changed: selection does not avoid subscriptions that already hold reservations; the ledger already counts held reservations.
+
+Run command and originality audit verification (2026-09-27):
+
+- `npm run check`: 111 offline tests passed. New coverage:
+  - With no eligible adapter, nothing is created or contacted, and an adapter/model mismatch is refused.
+  - Past mode solves released days; an unreleased explicit day gets exactly the bounded unlock retries.
+  - A rerun of a solved day makes no AoC request.
+  - Live mode sleeps until release plus margin before the first request, then stops at the first unavailable day.
+  - An aborted wait leaves state resumable and locks released.
+  - CLI refusal, day validation, and the abort exit code.
+  - The originality audit: exact tool set, forbidden imports in solver and sandbox code, and Docker arguments with no network, extra mounts, environment, or socket.
+- `npm run test:executor -- <boc-solver image>` passed with the new DNS and HTTP failure checks.
+- Independent review (child Pi, read-only), all addressed:
+  - Sleep abort listeners leaked; a shared `abortableSleep` now removes them.
+  - The provider-fault exclusion set was never used. It is removed, and the run now stops on a fault by design.
+  - Out-of-range `--days` values are now rejected.
+  - Tests for the aborted-run exit code were missing and have been added.

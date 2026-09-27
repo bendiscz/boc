@@ -10,6 +10,7 @@ import { Workspace } from "../sandbox/workspace.ts";
 import type { PartNumber, PuzzleId } from "../state/ids.ts";
 import { type Layout, writeFileAtomic } from "../state/layout.ts";
 import { type RunStore, StateError, submissionBlocker } from "../state/run-state.ts";
+import { abortableSleep } from "../util/sleep.ts";
 import { createSolverAgent } from "./agent.ts";
 import { SOLVER_SYSTEM_PROMPT, taskPrompt } from "./prompt.ts";
 import { createSolverTools } from "./tools.ts";
@@ -56,19 +57,6 @@ export type PartOutcome =
   | "provider-fault"
   | "no-subscription";
 
-const defaultSleep = (ms: number, signal?: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason);
-      },
-      { once: true },
-    );
-  });
-
 export async function solvePuzzle(options: SolveOptions) {
   const part1 = await solvePart(options, 1);
   if (part1 !== "solved") return { part1, part2: undefined };
@@ -79,7 +67,7 @@ export async function solvePuzzle(options: SolveOptions) {
 export async function solvePart(options: SolveOptions, part: PartNumber): Promise<PartOutcome> {
   const { store, aoc, puzzle } = options;
   const now = options.now ?? (() => new Date());
-  const sleep = options.sleep ?? defaultSleep;
+  const sleep = options.sleep ?? abortableSleep;
   const maxAttempts = options.maxAttemptsPerPart ?? 4;
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 999) {
     throw new Error("maxAttemptsPerPart must be an integer from 1 to 999.");

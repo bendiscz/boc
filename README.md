@@ -28,6 +28,7 @@ npm ci --ignore-scripts
 npm run check
 node dist/main.js check-config examples/boc.config.json
 node dist/main.js status examples/boc.config.json   # read-only; see CONFIGURATION.md
+node dist/main.js run examples/boc.config.json      # refuses: no eligible provider adapter yet
 ```
 
 Configuration checking reads no credentials and makes no network requests. Example budgets and model IDs are placeholders, not verified provider allocations.

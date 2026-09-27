@@ -23,7 +23,7 @@ function capture() {
 test("help works offline and explicitly reports the disabled live functionality", async () => {
   const output = capture();
   assert.equal(await runCli([], output), 0);
-  assert.match(output.stdout.join("\n"), /not enabled/);
+  assert.match(output.stdout.join("\n"), /always refuses to start/);
   assert.deepEqual(output.stderr, []);
 });
 
@@ -133,4 +133,42 @@ test("status is lock-free; ledger commands require exclusive access", async (t) 
   assert.match(await readFile(join(dir, "var/INDEX.md"), "utf8"), /2026/);
   output = capture();
   assert.equal(await runCli(["ledger", "break-lock", configPath], output), 0);
+});
+
+test("run refuses to start without an eligible provider and validates day lists", async () => {
+  const example = fileURLToPath(new URL("../examples/boc.config.json", import.meta.url));
+  let output = capture();
+  assert.equal(await runCli(["run", example], output), 1);
+  assert.match(output.stderr.join(), /No eligible provider adapter/);
+  for (const flags of [
+    ["--days"],
+    ["--days", "1;2"],
+    ["--days", "1,2", "x"],
+    ["--days", "0"],
+    ["--days", "32"],
+    ["--fast"],
+  ]) {
+    output = capture();
+    assert.equal(await runCli(["run", example, ...flags], output), 2, flags.join(" "));
+  }
+});
+
+test("an aborted run reports a resumable stop with exit code 130", async () => {
+  const example = fileURLToPath(new URL("../examples/boc.config.json", import.meta.url));
+  const controller = new AbortController();
+  controller.abort();
+  const output = capture();
+  assert.equal(await runCli(["run", example], output, { signal: controller.signal }), 130);
+  assert.match(output.stderr.join(), /State is saved/);
+});
+
+test("abortable sleep resolves, rejects on abort, and leaves no listeners", async () => {
+  const { abortableSleep } = await import("../src/util/sleep.ts");
+  const controller = new AbortController();
+  const events = await import("node:events");
+  await abortableSleep(1, controller.signal);
+  assert.equal(events.EventEmitter.getEventListeners(controller.signal, "abort").length, 0);
+  const pending = abortableSleep(10_000, controller.signal);
+  controller.abort();
+  await assert.rejects(pending);
 });

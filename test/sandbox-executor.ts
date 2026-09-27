@@ -30,7 +30,11 @@ fs.mkdirSync('/tmp/home', { recursive: true });
 fs.writeFileSync('/tmp/scratch', 'ok'); out.tmp = fs.readFileSync('/tmp/scratch', 'utf8');
 out.external = Object.values(os.networkInterfaces()).flat().filter(n => !n.internal).length;
 out.input = fs.readFileSync('/work/input.txt', 'utf8');
-console.log(JSON.stringify(out));
+require('node:dns').promises.lookup('adventofcode.com')
+  .then(() => { out.dns = true; }, () => { out.dns = false; })
+  .then(() => fetch('https://1.1.1.1/', { signal: AbortSignal.timeout(5000) }))
+  .then(() => { out.http = true; }, () => { out.http = false; })
+  .then(() => console.log(JSON.stringify(out)));
 `,
   );
   await ws.place("input.txt", "synthetic\n");
@@ -48,6 +52,8 @@ console.log(JSON.stringify(out));
     tmp: "ok",
     external: 0,
     input: "synthetic\n",
+    dns: false,
+    http: false,
   });
 
   await ws.write("flood.js", "process.stdout.write('x'.repeat(100000));");

@@ -49,6 +49,7 @@ Duplicate IDs, duplicate credential paths (including normalized relative-path al
 ## Commands and exit codes
 
 - `boc check-config <config>` — structural validation only.
+- `boc run <config> [--days 1,2,5]` — solve past days or wait for releases. It refuses to start without an eligible provider adapter; today there is none. Ctrl-C stops gracefully with exit code `130`, and rerunning resumes.
 - `boc status <config>` — read-only run state and credits; takes no lock, safe while BoC runs.
 - `boc views <config>` — regenerate private Markdown summaries under `storageDir`.
 - `boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>` — record an authoritative charge for a held reservation (requires the ledger lock: stop BoC first).
