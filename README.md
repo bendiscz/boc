@@ -19,8 +19,20 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 ## Status
 
-Documentation bootstrap only. No runnable application or live integrations exist yet.
+The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, and tests. Live solving, provider requests, AoC access, the ledger, and the TUI are not implemented yet. Both subscription adapters remain disabled pending enforceable credit accounting.
 
+Requires Node.js 24.21+ within the 24 LTS line and npm:
+
+```sh
+npm ci --ignore-scripts
+npm run check
+node dist/main.js check-config examples/boc.config.json
+```
+
+Configuration checking reads no credentials and makes no network requests. Example budgets and model IDs are placeholders, not verified provider allocations.
+
+- [Configuration reference](docs/CONFIGURATION.md)
+- [Provider, Pi, and isolation feasibility findings](docs/FEASIBILITY.md)
 - [Requirements and acceptance criteria](docs/REQUIREMENTS.md)
 - [Development plan and handoff](docs/PLAN.md)
 - [Decisions and feasibility notes](docs/DECISIONS.md)
@@ -30,7 +42,7 @@ To continue development in Pi, open this repository and say **“go on”**.
 
 ## Private data
 
-Use `.secrets/` for local credential files and `var/` for runtime artifacts, or configure paths outside the repository. Both directories are ignored. Future configuration examples must contain paths and placeholders only, never real credentials. Puzzle-bearing artifacts and transcripts remain private even if they contain no credentials.
+Use `.secrets/` for local credential files and `var/` for runtime artifacts, or configure paths outside the repository. Both directories are ignored. Configuration examples contain paths and placeholders only, never real credentials. Puzzle-bearing artifacts and transcripts remain private even if they contain no credentials.
 
 Do not supply secrets in chat or Git. Live testing will require a dedicated AoC session-cookie file and authorized provider credential files; these are not needed for the initial offline implementation.
 

@@ -1,6 +1,6 @@
 # Decisions and feasibility notes
 
-## D001 — Documentation-first bootstrap
+## D001 — Documentation-first bootstrap (completed)
 
 The operator requested feasibility assessment, a context/bootstrap commit, removal of `init.md` (preserved in history), a push, and then a stop before application development. This bootstrap contains no application implementation.
 
@@ -43,3 +43,19 @@ Select and verify an OS-level isolation strategy during the feasibility spike. N
 ## D007 — Persist enough context for autonomous continuation
 
 Maintain `AGENTS.md`, requirements, decisions, and an actionable plan in Git. Each development increment should update verification status and next steps. Use small descriptive commits and push completed work. Runtime puzzle artifacts remain private even when development progress is committed.
+
+## D008 — Offline-first foundation and provider eligibility
+
+The 2026-09-27 [feasibility spike](FEASIBILITY.md) found that documented session/usage limits do not establish the required pre-dispatch ceiling. Pi's pinned Codex payload builder also does not serialize a generic output-token limit. Neither requested adapter is eligible for autonomous chargeable execution yet. Continue offline ledger, fake-transport, and solver-isolation development without weakening that gate. Live-account validation is a later dependency, not implied by OAuth support.
+
+Pin Node.js to the 24 LTS line (tested/minimum 24.21.0) and the Pi package family to 0.87.1. Use TypeScript, native Node tests, Biome, a lockfile, and credential-free CI. Disable dependency lifecycle scripts. The initial CLI validates configuration only.
+
+## D009 — Explicit native pools and exact decimal credits
+
+Configuration v1 names subscriptions and provider-specific aggregate credit pools. Every subscription references exactly one compatible pool. Both have explicit event and per-puzzle limits; requests must eventually reserve against all four applicable counters. Separate provider units are never summed. Zero means no admitted consumption. Current limits are uniform across puzzles; per-puzzle overrides can be added through a versioned schema if needed.
+
+Store amounts as JSON decimal strings and represent them internally as `bigint` at 18-decimal scale. Reject unsupported precision rather than rounding down. Credential paths are relative to the config file; no shell expansion or secret values are supported. Schema success is not account validation or an admission decision. See [configuration semantics](CONFIGURATION.md).
+
+## D010 — Networkless container execution, not host tools
+
+Select a separate non-root, resource-limited, networkless Linux container as the initial generated-code boundary. Keep the trusted orchestrator and all credentials outside it. A local Docker synthetic probe passed; no production executor or toolchain image has been built. The final image must contain Python/uv, Node.js, Go, and Rust even if those tools are already installed on the host. Require Docker/VM provisioning rather than silently falling back to host execution. Dependency acquisition remains separate and controlled. See [isolation requirements and evidence](FEASIBILITY.md#solver-isolation-decision).

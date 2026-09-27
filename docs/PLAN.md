@@ -2,31 +2,35 @@
 
 ## Current state
 
-- Documentation-only bootstrap; no implementation or test suite yet.
+- Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, 22 offline tests, build/lint/type checks, and credential-free CI configuration.
+- No live provider adapter, AoC client, solver, durable ledger, or TUI yet. Both real providers are deliberately ineligible for chargeable work; see `FEASIBILITY.md`.
+- A synthetic Docker isolation probe passed locally; production execution and dependency acquisition remain unimplemented.
 - Repository: `https://github.com/bendiscz/boc.git`, branch `main`.
 - Bootstrap commit: `676e152`. The initial checkout used `master`; GitHub's default branch is `main`, so ongoing development follows `main`.
 - The operator clarified credit-only budgets, multiple subscriptions, runtime prohibition on retrieving solutions, and an AI/bot-permitted private leaderboard.
 - No BoC provider credentials or AoC cookie have been requested or used. No live puzzle was fetched or answer submitted.
-- Feasibility inspection found Node.js `v24.21.0`, npm `11.19.0`, and Pi `0.87.1` in the development environment. These are observations, not selected support versions.
+- Selected Node.js 24 LTS (minimum/tested 24.21.0) and pinned Pi family 0.87.1, TypeScript 6.0.3, Biome 2.5.14, and Zod 4.6.5. npm `11.19.0` was used locally. Dependencies and lockfile are committed; lifecycle scripts are disabled.
 - Original `init.md` is replaced by the English project documentation and retained in Git history.
 
 ## Next session: start here
 
-Read `AGENTS.md`, `REQUIREMENTS.md`, and `DECISIONS.md`, then begin milestone 1. The immediate task is a provider-credit and isolation feasibility spike followed by a minimal TypeScript project skeleton. Work offline where possible. Do not start potentially chargeable experiments without explicit credential configuration and a safe credit allocation.
+Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Prioritize early discovery of a subscription that cannot satisfy hard credit accounting. Report a real incompatibility instead of building an apparently budget-safe adapter over estimates that can overshoot.
+Next concrete task: complete milestone 1's unchecked transport-admission proof using fake providers only. Trace every Pi request path, implement a narrow guarded boundary with no ambient resources/credentials, and prove that normal turns, tool loops, retries, compaction, summaries, and cache warming cannot bypass admission (or remain disabled). Then implement milestone 2's durable four-counter credit ledger and recovery tests. Do not begin live calls while either eligibility gate is unresolved.
+
+The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
 ## Milestones
 
 ### 1. Validate foundations and establish the project
 
-- [ ] Read current installed Pi SDK docs and relevant examples; choose and pin supported Node.js/Pi versions.
-- [ ] Investigate each requested provider's current authentication, enterprise restrictions, credit definition, usage reporting, and conservative per-call bound. Record sources and clearly separate documented from experimentally verified behavior.
+- [x] Read current installed Pi SDK docs and relevant examples; choose and pin supported Node.js/Pi versions.
+- [x] Investigate each requested provider's current authentication, enterprise restrictions, credit definition, usage reporting, and conservative per-call bound. Sources and unresolved eligibility gates are in `FEASIBILITY.md`; no live validation.
 - [ ] Verify a pre-dispatch enforcement point that covers all Pi calls, including retries, compaction, and auxiliary work. Disable hidden/unaccounted chargeable behavior until guarded.
-- [ ] Define subscription identity, native credit units, pool allocation, and budget configuration semantics.
-- [ ] Choose a feasible generated-code sandbox and controlled dependency-acquisition mechanism; document host prerequisites.
-- [ ] Scaffold TypeScript, package scripts, lockfile, formatting/linting, type checks, offline tests, and CI. CI must not need private credentials or puzzle data.
-- [ ] Add validated non-secret configuration examples with credential-file paths only.
+- [x] Define subscription identity, native credit units, pool allocation, and budget configuration semantics.
+- [x] Select networkless Linux-container isolation and document prerequisites; run a synthetic local probe. Production executor and controlled dependency-acquisition implementation remain in milestone 4.
+- [x] Scaffold TypeScript, package scripts, lockfile, formatting/linting, type checks, offline tests, and CI. CI must not need private credentials or puzzle data.
+- [x] Add validated non-secret configuration examples with credential-file paths only.
 
 ### 2. Durable state and credit admission
 
@@ -81,4 +85,15 @@ Bootstrap verification:
 - `git diff --cached --check` — passed.
 - `git check-ignore` for representative credential files, private inputs/transcripts, `.env`, `auth.json`, and `node_modules/` — all correctly ignored.
 - Reviewed staged paths and change summary — documentation, `.gitignore`, and removal of `init.md` only; no private data.
-- There is no application to test yet. No live provider or AoC validation has been performed.
+- At bootstrap there was no application to test. No live provider or AoC validation was performed.
+
+Foundation verification (2026-09-27):
+
+- `npm install --ignore-scripts` followed by a clean `npm ci --ignore-scripts` — completed; audit reported zero vulnerabilities at installation time.
+- `npm run check` — lint, type checks, 22 offline tests, and ESM build passed locally.
+- `node dist/main.js check-config examples/boc.config.json` — passed, explicitly reporting disabled live providers; credential files not read.
+- `npm ls` for the Pi family — all five packages resolved to 0.87.1.
+- `npm run test:sandbox -- <local Node image ID>` — passed the synthetic isolation checks on Docker 29.8.0; no image pull or puzzle/provider traffic.
+- Independent read-only review found no P1 issues and one P2 verification gap: a non-root write failure did not prove read-only root. Added a `/proc/self/mountinfo` assertion and reran all checks. A negative-control run with `--read-only` removed correctly failed that assertion.
+- Representative credential, private artifact, dependency, and build paths were confirmed ignored by Git.
+- GitHub CI is configured, not yet claimed as remotely verified. No live provider or AoC testing.

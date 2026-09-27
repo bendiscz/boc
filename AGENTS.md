@@ -30,4 +30,4 @@ Read `README.md`, `docs/REQUIREMENTS.md`, and `docs/PLAN.md` before continuing w
 
 ## Current stage
 
-This is a documentation-only bootstrap. There is no application, package manifest, test suite, or validated live integration yet. Follow `docs/PLAN.md` for the development sequence.
+The offline foundation has a configuration-checking CLI, exact credit values, a restrictive Pi settings profile, and tests. Run `npm ci --ignore-scripts` and `npm run check`. An opt-in synthetic Docker probe is documented in `docs/FEASIBILITY.md`. No live provider adapter, solver, AoC client, or durable budget ledger is enabled yet. Read `docs/CONFIGURATION.md` and `docs/FEASIBILITY.md` alongside the plan before continuing. Do not mistake valid configuration or passing settings tests for live credit-budget enforcement.

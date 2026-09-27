@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "event": { "year": 2026 },
+  "storageDir": "../var",
+  "aoc": { "sessionCookieFile": "../.secrets/aoc-session" },
+  "creditPools": [
+    {
+      "id": "copilot-pool",
+      "provider": "github-copilot",
+      "unit": "copilot-ai-credit",
+      "limits": { "event": "1000", "perPuzzle": "100" }
+    },
+    {
+      "id": "codex-pool",
+      "provider": "openai-codex",
+      "unit": "codex-credit",
+      "limits": { "event": "500", "perPuzzle": "50" }
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "copilot-work",
+      "provider": "github-copilot",
+      "credentialFile": "../.secrets/copilot.json",
+      "model": "replace-with-entitled-model",
+      "creditPool": "copilot-pool",
+      "limits": { "event": "1000", "perPuzzle": "100" }
+    },
+    {
+      "id": "chatgpt-business",
+      "provider": "openai-codex",
+      "credentialFile": "../.secrets/codex.json",
+      "model": "replace-with-entitled-model",
+      "creditPool": "codex-pool",
+      "limits": { "event": "500", "perPuzzle": "50" }
+    }
+  ]
+}

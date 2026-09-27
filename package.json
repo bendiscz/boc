@@ -1,0 +1,39 @@
+{
+  "name": "bot-of-code",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An autonomous Advent of Code contestant built on Pi",
+  "type": "module",
+  "license": "Unlicense",
+  "engines": {
+    "node": ">=24.21.0 <25"
+  },
+  "bin": {
+    "boc": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "test:sandbox": "node test/sandbox-smoke.ts",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "dev": "node src/main.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "24.13.6",
+    "typescript": "6.0.3"
+  },
+  "overrides": {
+    "@earendil-works/pi-ai": "0.87.1",
+    "@earendil-works/pi-agent-core": "0.87.1",
+    "@earendil-works/pi-tui": "0.87.1",
+    "@earendil-works/chord": "0.87.1"
+  }
+}
