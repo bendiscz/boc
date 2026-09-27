@@ -1,0 +1,36 @@
+# Dependencies and generated build/test output
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Private credentials (prefer .secrets/ or paths outside this repository)
+.secrets/
+secrets/
+.env
+.env.*
+!.env.example
+auth.json
+auth.*.json
+credentials.json
+credentials.*.json
+*.pem
+*.key
+*.cookie
+*.cookies
+session.cookie
+cookies.txt
+
+# Private AoC artifacts: puzzle text, inputs, responses, transcripts, solutions
+var/
+.private/
+artifacts/
+runs/
+*.log
+
+# Local agent state and machine-specific files
+.pi/
+.DS_Store
+*.swp
+*.swo
