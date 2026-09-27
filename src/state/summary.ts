@@ -29,6 +29,7 @@ function puzzles(state: RunState): PuzzleState[] {
 export function renderEventSummary(state: RunState, ledger?: LedgerStatus): string {
   const lines = [`# BoC run summary — ${state.eventYear}`, ""];
   lines.push("Derived from the run-state and ledger journals; private — do not publish.", "");
+  lines.push("Run log: [events.log](events.log)", "");
   if (state.submitNotBefore)
     lines.push(`Submissions embargoed until ${state.submitNotBefore}.`, "");
   lines.push("## Puzzles", "");

@@ -43,4 +43,4 @@ The operator decided that BoC must **not** wait between the puzzle page, input, 
 - The event calendar page, used to discover how many days an event has.
 - Exact AoC wording for every response variant.
 - Mapping of logged-out puzzle pages beyond the `class="user"` marker.
-- Reconciliation marks an answer `not-correct` when the page shows the part still unsolved at the same level. An answer the server never judged (for example, one rejected with an auth error) is then also blocked from resubmission. This errs toward never duplicating. Operator override tooling does not exist yet.
+- Reconciliation marks an answer `not-correct` when the page shows the part still unsolved at the same level. An answer the server never judged (for example, one rejected with an auth error) is then also blocked from resubmission. This errs toward never duplicating. An operator with evidence can run `boc submission not-judged <config> <day> <part> <n> <note>`. It unblocks the answer and returns an uncertain part to `ready`; it never submits anything by itself.

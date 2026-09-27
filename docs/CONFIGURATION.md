@@ -49,12 +49,13 @@ Duplicate IDs, duplicate credential paths (including normalized relative-path al
 ## Commands and exit codes
 
 - `boc check-config <config>` — structural validation only.
-- `boc run <config> [--days 1,2,5]` — solve past days or wait for releases. It refuses to start without an eligible provider adapter; today there is none. Ctrl-C stops gracefully with exit code `130`, and rerunning resumes.
+- `boc run <config> [--days 1,2,5] [--tui]` — solve past days or wait for releases. It refuses to start without an eligible provider adapter; today there is none. Ctrl-C stops gracefully with exit code `130`, and rerunning resumes. `--tui` shows a live dashboard when stdout is a terminal; otherwise output is timestamped lines. Every event is also appended to the private `runs/<year>/events.log`.
 - `boc status <config>` — read-only run state and credits; takes no lock, safe while BoC runs.
 - `boc views <config>` — regenerate private Markdown summaries under `storageDir`.
 - `boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>` — record an authoritative charge for a held reservation (requires the ledger lock: stop BoC first).
 - `boc ledger acknowledge <config> <reservation-id> <note>` — acknowledge a reviewed overrun so admission can resume.
 - `boc ledger break-lock <config>` — remove a lock left by a dead process on this host.
+- `boc submission not-judged <config> <day> <part> <submission#> <note>` — operator override for a submission AoC never judged, for example one rejected with an auth error and later reconciled as `not-correct`. It makes the answer submittable again by a new attempt; it never submits by itself. It requires the run-state lock, so stop BoC first.
 
 The private artifact layout is documented in `src/state/layout.ts` and D013.
 

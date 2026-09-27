@@ -152,7 +152,11 @@ test("past mode solves released days; an unreleased explicit day is retried boun
     f.aocCalls.filter((c) => c.startsWith("puzzle 2")).length,
     UNLOCK_RETRY_DELAYS_MS.length + 1,
   );
+  const log = await readFile(join(f.root, "var/runs/2025/events.log"), "utf8");
+  assert.match(log, /^\d{4}-\d\d-\d\dT.* day-01 part 1: attempt 1 started \(sub\)$/m);
+  assert.equal((await stat(join(f.root, "var/runs/2025/events.log"))).mode & 0o077, 0);
   const summary = await readFile(join(f.root, "var/runs/2025/SUMMARY.md"), "utf8");
+  assert.match(summary, /\[events\.log\]\(events\.log\)/);
   assert.match(summary, /day-01.*solved.*solved/);
   assert.match(summary, /## Credits/);
 
@@ -161,6 +165,21 @@ test("past mode solves released days; an unreleased explicit day is retried boun
   const again = await f.run({ days: [1] });
   assert.deepEqual(again, [{ puzzle: "day-01", part1: "solved", part2: "solved" }]);
   assert.equal(f.aocCalls.length, before);
+});
+
+test("progress snapshots carry the current puzzle and ledger status", async (t) => {
+  const f = await setup(t, "2026-01-01T00:00:00.000Z");
+  f.released.add(1);
+  const seen: string[] = [];
+  await f.run({
+    days: [1],
+    onProgress: (p) =>
+      seen.push(
+        `${p.current}:${p.state.puzzles["day-01"]?.parts[1].status ?? "-"}:${p.ledger.counters.some((c) => c.period === "day-01")}`,
+      ),
+  });
+  assert.ok(seen.includes("day-01:solving:true"));
+  assert.equal(seen.at(-1), "day-01:solved:true");
 });
 
 test("live mode sleeps until release before the first request, then stops after the last day", async (t) => {

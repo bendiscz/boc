@@ -283,6 +283,7 @@ test("puzzle text cannot close the prompt's delimiters", async () => {
       upperBound: undefined,
       solvedAnswer: undefined,
       gaveUpReason: undefined,
+      lastSubscription: undefined,
     },
   });
   assert.equal(prompt.match(/<\/puzzle>/g)?.length, 1);

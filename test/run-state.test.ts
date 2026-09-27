@@ -272,3 +272,74 @@ test("layout, atomic writes, and derived views are private and navigable", async
   );
   assert.match(renderEventSummary(store.state), /ready, 1 attempts, 1 submissions/);
 });
+
+test("an operator can mark a never-judged submission so its answer is submittable again", async (t) => {
+  const store = await openStore(t, join(await root(t), "runs"));
+  await toProposed(store, "42");
+  await store.record(submit(1, 1, "42"));
+  await store.record({
+    type: "submission-finished",
+    ...part1,
+    submission: 1,
+    verdict: "uncertain",
+  });
+  await store.record({
+    type: "submission-reconciled",
+    ...part1,
+    submission: 1,
+    verdict: "not-correct",
+    evidence: "puzzle-page",
+  });
+  await store.record({ type: "attempt-started", ...part1, attempt: 2, subscription: "s" });
+  await store.record({
+    type: "attempt-finished",
+    ...part1,
+    attempt: 2,
+    outcome: "answer",
+    answer: "42",
+  });
+  await assert.rejects(store.record(submit(2, 2, "42")), /duplicate-answer/);
+  await store.record({
+    type: "submission-not-judged",
+    ...part1,
+    submission: 1,
+    note: "auth-rejected",
+  });
+  await store.record(submit(2, 2, "42"));
+  await store.record({ type: "submission-finished", ...part1, submission: 2, verdict: "correct" });
+  // Judged verdicts cannot be overridden.
+  await assert.rejects(
+    store.record({ type: "submission-not-judged", ...part1, submission: 2, note: "x" }),
+    invalid,
+  );
+});
+
+test("overriding the latest uncertain submission unblocks its answer without resubmitting", async (t) => {
+  const store = await openStore(t, join(await root(t), "runs"));
+  await toProposed(store, "7");
+  await store.record(submit(1, 1, "7"));
+  await store.record({
+    type: "submission-finished",
+    ...part1,
+    submission: 1,
+    verdict: "uncertain",
+  });
+  await store.record({
+    type: "submission-not-judged",
+    ...part1,
+    submission: 1,
+    note: "operator-checked",
+  });
+  const part = store.state.puzzles[day]?.parts[1];
+  assert.equal(part?.status, "ready");
+  assert.equal(part?.proposed, undefined);
+  await store.record({ type: "attempt-started", ...part1, attempt: 2, subscription: "s" });
+  await store.record({
+    type: "attempt-finished",
+    ...part1,
+    attempt: 2,
+    outcome: "answer",
+    answer: "7",
+  });
+  await store.record(submit(2, 2, "7"));
+});

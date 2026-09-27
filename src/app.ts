@@ -1,8 +1,9 @@
+import { appendFile } from "node:fs/promises";
 import { isReleased, UNLOCK_RETRY_DELAYS_MS, waitForRelease } from "./aoc/calendar.ts";
 import { type AocClient, AocError, createAocClient } from "./aoc/client.ts";
 import { AocService } from "./aoc/service.ts";
 import { createLedgerAdmission } from "./budget/admission.ts";
-import { CreditLedger } from "./budget/ledger.ts";
+import { CreditLedger, type LedgerStatus } from "./budget/ledger.ts";
 import { selectSubscription } from "./budget/select.ts";
 import type { BocConfig } from "./config.ts";
 import {
@@ -14,7 +15,7 @@ import { createDockerExecutor, type Executor } from "./sandbox/executor.ts";
 import { type PartOutcome, solvePuzzle } from "./solver/run.ts";
 import { type PuzzleId, puzzleId } from "./state/ids.ts";
 import { layout } from "./state/layout.ts";
-import { RunStore } from "./state/run-state.ts";
+import { type RunState, RunStore } from "./state/run-state.ts";
 import { writeViews } from "./state/summary.ts";
 import { abortableSleep } from "./util/sleep.ts";
 
@@ -43,8 +44,16 @@ export interface RunOptions {
   readonly sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   readonly signal?: AbortSignal;
   readonly onEvent?: (message: string) => void;
+  /** Called after every event with journal-backed state, e.g. for the terminal view. */
+  readonly onProgress?: (progress: Progress) => void;
   readonly maxAttemptsPerPart?: number;
   readonly maxTurnsPerAttempt?: number;
+}
+
+export interface Progress {
+  readonly state: RunState;
+  readonly ledger: LedgerStatus;
+  readonly current: PuzzleId | undefined;
 }
 
 export interface DayResult {
@@ -55,7 +64,7 @@ export interface DayResult {
 
 export async function runEvent(options: RunOptions): Promise<DayResult[]> {
   const { config } = options;
-  const log = options.onEvent ?? (() => {});
+  let log = options.onEvent ?? (() => {});
   const now = options.now ?? (() => new Date());
   const sleep = options.sleep ?? abortableSleep;
   const year = config.event.year;
@@ -88,10 +97,30 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
 
   const paths = layout(config.storageDir, year);
   const clock = { now };
+  let logWrites: Promise<void> = Promise.resolve();
   const ledger = await CreditLedger.open({ directory: paths.ledger, config, now: clock.now });
   let store: RunStore | undefined;
   try {
     store = await RunStore.open({ directory: paths.runs, eventYear: year, now: clock.now });
+    const opened = store;
+    let current: PuzzleId | undefined;
+    const notify = options.onEvent ?? (() => {});
+    log = (message: string) => {
+      notify(message);
+      const line = `${now().toISOString()} ${message}\n`;
+      // Private, append-only run log; ordered by chaining, never blocking the run.
+      logWrites = logWrites
+        .then(() => appendFile(paths.eventLog, line, { mode: 0o600 }))
+        .catch(() => {});
+      options.onProgress?.({
+        state: opened.state,
+        ledger: ledger.status(current ? [current] : []),
+        current,
+      });
+    };
+    const setCurrent = (puzzle: PuzzleId) => {
+      current = puzzle;
+    };
     const client =
       options.aocClient ??
       createAocClient({
@@ -109,6 +138,7 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
     while (day !== undefined) {
       options.signal?.throwIfAborted();
       const puzzle = puzzleId(day);
+      setCurrent(puzzle);
       if (!isReleased(year, day, now())) {
         log(`${puzzle}: waiting for release`);
         await waitForRelease(year, day, {
@@ -177,6 +207,7 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
     }
     return results;
   } finally {
+    await logWrites;
     await store?.close().catch(() => {});
     await ledger.close().catch(() => {});
   }

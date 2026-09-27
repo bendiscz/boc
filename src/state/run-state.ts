@@ -83,6 +83,8 @@ export interface PartState {
   readonly upperBound: string | undefined;
   readonly solvedAnswer: string | undefined;
   readonly gaveUpReason: string | undefined;
+  /** Subscription of the most recent attempt (display only; the ledger is authoritative). */
+  readonly lastSubscription: string | undefined;
 }
 
 export interface PuzzleState {
@@ -167,6 +169,13 @@ const recordSchema = z.discriminatedUnion("type", [
     evidence: reason,
   }),
   z.strictObject({ ...base, type: z.literal("proposal-discarded"), ...where, reason }),
+  z.strictObject({
+    ...base,
+    type: z.literal("submission-not-judged"),
+    ...where,
+    submission: sequence,
+    note: reason,
+  }),
   z.strictObject({ ...base, type: z.literal("part-gave-up"), ...where, reason }),
 ]);
 
@@ -192,6 +201,7 @@ const EMPTY_PART: PartState = {
   upperBound: undefined,
   solvedAnswer: undefined,
   gaveUpReason: undefined,
+  lastSubscription: undefined,
 };
 
 function isInteger(value: string): boolean {
@@ -273,6 +283,7 @@ export function transition(state: RunState, record: RunRecord): RunState {
       next.status = "solving";
       next.attempts = record.attempt;
       next.activeAttempt = record.attempt;
+      next.lastSubscription = record.subscription;
       break;
     case "attempt-finished":
       if (before.status !== "solving" || before.activeAttempt !== record.attempt) {
@@ -367,6 +378,30 @@ export function transition(state: RunState, record: RunRecord): RunState {
         next.solvedAnswer = last.answer;
       } else {
         next.status = "ready";
+      }
+      break;
+    }
+    case "submission-not-judged": {
+      // Operator override: evidence shows AoC never judged this submission (e.g. an
+      // auth rejection). The answer becomes submittable again; nothing is resubmitted
+      // automatically unless the part is (re)proposed.
+      const index = before.submissions.findIndex((s) => s.submission === record.submission);
+      const target = before.submissions[index];
+      if (!target || (target.verdict !== "not-correct" && target.verdict !== "uncertain")) {
+        deny("submission is not overridable");
+      }
+      if (!target) return deny("submission is not overridable");
+      if (target.verdict === "uncertain" && index !== before.submissions.length - 1) {
+        deny("submission is not the latest");
+      }
+      const submissions = [...before.submissions];
+      submissions[index] = { ...target, verdict: "not-sent" };
+      next.submissions = submissions;
+      // Never resubmit on the override itself: an uncertain part returns to ready,
+      // so only a fresh proposal can submit the answer again.
+      if (before.status === "uncertain") {
+        next.status = "ready";
+        next.proposed = undefined;
       }
       break;
     }

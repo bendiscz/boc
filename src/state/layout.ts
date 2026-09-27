@@ -10,6 +10,7 @@ import { ensurePrivateDirectory, syncDirectory } from "./journal.ts";
  *   ledger/<year>/journal.jsonl                credit ledger (D012)
  *   runs/<year>/journal.jsonl                  run-state journal
  *   runs/<year>/SUMMARY.md                     readable event summary (regenerated)
+ *   runs/<year>/events.log                     append-only timestamped run log
  *   puzzles/<year>/<day-NN>/README.md          readable puzzle summary (regenerated)
  *   puzzles/<year>/<day-NN>/part-<P>.html      raw statement response (private)
  *   puzzles/<year>/<day-NN>/input.txt          personal input (private)
@@ -23,6 +24,7 @@ export interface Layout {
   readonly ledger: string;
   readonly runs: string;
   readonly summary: string;
+  readonly eventLog: string;
   puzzle(puzzle: PuzzleId): string;
   puzzleReadme(puzzle: PuzzleId): string;
   statement(puzzle: PuzzleId, part: PartNumber): string;
@@ -44,6 +46,7 @@ export function layout(storageDir: string, eventYear: number): Layout {
     ledger: join(storageDir, "ledger", year),
     runs: join(storageDir, "runs", year),
     summary: join(storageDir, "runs", year, "SUMMARY.md"),
+    eventLog: join(storageDir, "runs", year, "events.log"),
     puzzle: puzzleDir,
     puzzleReadme: (puzzle) => join(puzzleDir(puzzle), "README.md"),
     statement: (puzzle, part) => {

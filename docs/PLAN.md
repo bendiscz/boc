@@ -3,6 +3,7 @@
 ## Current state
 
 - Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
+- Terminal dashboard (`--tui`, alternate screen, throttled), private `events.log`, and the operator override `boc submission not-judged` (it only unblocks an answer; it never resubmits).
 - `boc run <config> [--days ...]` (`src/app.ts`):
   - It fails closed before any storage, ledger, or AoC access, because the production adapter registry is intentionally empty.
   - It sleeps until each release, retries unlock a bounded number of times, and never refetches solved days.
@@ -26,13 +27,16 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: milestone 5.
+Next concrete task: the remaining offline work, while milestone 6 is blocked on the provider credit gates.
 
-1. Add a live terminal view for `boc run` (`--tui`, with headless timestamped lines as the default). It should show the current puzzle and part, the phase, the subscription, spent/reserved/remaining credits per pool (from `ledger.status`), recent events, and results. Keep it dependency-light (`pi-tui` is available), and keep headless output for logs and CI.
-2. Add a private per-run log file with the timestamped `onEvent` lines under `runs/<year>/`, linked from `SUMMARY.md`.
-3. Add operator tooling for the known gaps: override a reconciled `not-correct` for an answer that was never judged, and list and settle held reservations (the latter already exists as `boc ledger settle`).
-
-Milestone 6 stays blocked until a provider meets its credit gate (FEASIBILITY.md). The first live step then is a provider adapter in `src/providers/`, registered in `PRODUCTION_ADAPTERS`, with its own evidence.
+1. Write `docs/OPERATOR.md`. It should cover prerequisites (Node 24, Docker, image build with the optional CA secret), private directories and permissions, the cookie file and `aoc.contact`, budget configuration, running (`run`, `--days`, `--tui`, Ctrl-C and resume), monitoring (`status`, `views`, `events.log`, transcripts), and recovery (stale locks, held reservations, `ledger settle`/`acknowledge`, uncertain submissions, `submission not-judged`).
+2. Add offline drill tests for milestone 7:
+   - a process kill mid-attempt and mid-submission, simulated by discarding instances without `close()`;
+   - an AoC outage (network errors on fetch and submit);
+   - an expired session (auth errors);
+   - quota exhaustion across two subscriptions.
+   Assert that the journals stay consistent and nothing is duplicated.
+3. Then ask the operator how to proceed on provider eligibility. The Copilot and Codex gates in FEASIBILITY.md need either an official hard per-call bound or an operator decision backed by evidence. Do not weaken the gate unilaterally.
 
 Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -74,9 +78,9 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 ### 5. Terminal experience and recoverability
 
-- [ ] Show puzzle, phase, provider, spent/reserved/remaining credits by pool, recent actions, and results.
-- [x] Provide headless mode, graceful shutdown, resumable runs, and clear terminal failure states. (`boc run`; TUI still pending.)
-- [ ] Produce a human-readable private run summary and navigable per-puzzle artifacts.
+- [x] Show puzzle, phase, provider, spent/reserved/remaining credits by pool, recent actions, and results. (`boc run --tui`, `src/ui/dashboard.ts`; `boc status`.)
+- [x] Provide headless mode, graceful shutdown, resumable runs, and clear terminal failure states. (`boc run`, with headless timestamped lines by default.)
+- [x] Produce a human-readable private run summary and navigable per-puzzle artifacts. (`INDEX.md`, `SUMMARY.md`, per-puzzle `README.md`, `events.log`, per-attempt `transcript.json` and `work/`.)
 
 ### 6. Authorized historical evaluation
 
@@ -201,3 +205,17 @@ Run command and originality audit verification (2026-09-27):
   - The provider-fault exclusion set was never used. It is removed, and the run now stops on a fault by design.
   - Out-of-range `--days` values are now rejected.
   - Tests for the aborted-run exit code were missing and have been added.
+
+Terminal view and operator tooling verification (2026-09-27):
+
+- `npm run check`: 117 offline tests passed. New coverage:
+  - dashboard content (phase, subscription, per-pool credits, holds, results, events) and width clipping;
+  - alternate-screen enter and restore with no draw after close;
+  - progress snapshots carrying the current puzzle;
+  - `events.log` content, `0600` permissions, and the link from the summary;
+  - the override unblocking only never-judged submissions, never judged ones, and never resubmitting by itself;
+  - the CLI override requiring exact arguments and the store lock.
+- Independent review (child Pi, read-only), all addressed:
+  - The override re-proposed an uncertain answer, so the next run would have submitted it automatically. It now returns the part to `ready`, and only a fresh proposal can submit that answer again.
+  - The TUI did not restore the terminal. It now uses the alternate screen, hides and restores the cursor, and restores on exit.
+  - The event buffer was kept even without the TUI; it is now kept only for the TUI.

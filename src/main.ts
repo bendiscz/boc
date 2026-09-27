@@ -16,5 +16,5 @@ process.exitCode = await runCli(
     out: (message) => console.log(message),
     err: (message) => console.error(message),
   },
-  { signal: controller.signal },
+  { signal: controller.signal, ...(process.stdout.isTTY ? { terminal: process.stdout } : {}) },
 );

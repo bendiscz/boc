@@ -172,3 +172,67 @@ test("abortable sleep resolves, rejects on abort, and leaves no listeners", asyn
   controller.abort();
   await assert.rejects(pending);
 });
+
+test("the submission override command requires exact arguments and the store lock", async (t) => {
+  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { RunStore } = await import("../src/state/run-state.ts");
+  const dir = await mkdtemp(join(tmpdir(), "boc-cli-sub-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const example = JSON.parse(
+    await readFile(new URL("../examples/boc.config.json", import.meta.url), "utf8"),
+  );
+  const configPath = join(dir, "boc.config.json");
+  await writeFile(configPath, JSON.stringify({ ...example, storageDir: "var" }));
+  const runs = join(dir, "var/runs/2026");
+  const store = await RunStore.open({ directory: runs, eventYear: 2026 });
+  const day = "day-01" as never;
+  await store.record({ type: "input-fetched", puzzle: day, sha256: "a".repeat(64) });
+  await store.record({ type: "statement-fetched", puzzle: day, part: 1, sha256: "b".repeat(64) });
+  await store.record({
+    type: "attempt-started",
+    puzzle: day,
+    part: 1,
+    attempt: 1,
+    subscription: "s",
+  });
+  await store.record({
+    type: "attempt-finished",
+    puzzle: day,
+    part: 1,
+    attempt: 1,
+    outcome: "answer",
+    answer: "5",
+  });
+  await store.record({
+    type: "submission-started",
+    puzzle: day,
+    part: 1,
+    submission: 1,
+    attempt: 1,
+    answer: "5",
+  });
+  await store.record({
+    type: "submission-finished",
+    puzzle: day,
+    part: 1,
+    submission: 1,
+    verdict: "uncertain",
+  });
+  const args = ["submission", "not-judged", configPath, "1", "1", "1", "operator-checked"];
+  let output = capture();
+  assert.equal(await runCli(args, output), 1, "locked while the store is open");
+  await store.close();
+  output = capture();
+  assert.equal(
+    await runCli(["submission", "not-judged", configPath, "1", "3", "1", "x"], output),
+    2,
+  );
+  output = capture();
+  assert.equal(await runCli(args, output), 0, output.stderr.join());
+  output = capture();
+  assert.equal(await runCli(args, output), 1, "no longer overridable");
+  const reopened = await RunStore.inspect({ directory: runs, eventYear: 2026 });
+  assert.equal(reopened.puzzles["day-01"]?.parts[1].status, "ready");
+});
