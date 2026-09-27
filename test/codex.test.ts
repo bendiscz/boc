@@ -207,3 +207,66 @@ test("Codex login picks the device-code flow; Anthropic login is refused", async
   });
   await assert.rejects(loginSubscription(anthropic, "claude", io), /not supported for anthropic/);
 });
+
+test("browser login prints the sign-in URL and cancels the paste prompt when the callback arrives", async (t) => {
+  const f = await setup(t);
+  const said: string[] = [];
+  let selected = "";
+  let pasteAborted = false;
+  const provider = {
+    ...f.provider,
+    auth: {
+      oauth: {
+        name: "fake",
+        login: async (i: {
+          prompt: (p: unknown) => Promise<string>;
+          notify: (e: unknown) => void;
+        }) => {
+          selected = await i.prompt({
+            type: "select",
+            message: "method",
+            options: [
+              { id: "browser", label: "Browser" },
+              { id: "device_code", label: "Device code" },
+            ],
+          });
+          i.notify({
+            type: "auth_url",
+            url: "https://auth.openai.com/oauth/authorize?state=synthetic",
+          });
+          const manual = new AbortController();
+          const pending = i
+            .prompt({ type: "manual_code", message: "paste", signal: manual.signal })
+            .catch(() => "aborted");
+          manual.abort(); // the local callback server received the code
+          assert.equal(await pending, "aborted");
+          return {
+            type: "oauth",
+            refresh: "synthetic-r3",
+            access: "synthetic-a3",
+            expires: 1,
+            accountId: "acct",
+          };
+        },
+      },
+    },
+  } as unknown as Provider;
+  const io = {
+    ask: (_q: string, signal?: AbortSignal) =>
+      new Promise<string>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          pasteAborted = true;
+          reject(new Error("aborted"));
+        });
+      }),
+    say: (m: string) => said.push(m),
+    signal: new AbortController().signal,
+  };
+  await loginSubscription(f.config, "codex", io, provider, "browser");
+  assert.equal(selected, "browser");
+  assert.ok(pasteAborted);
+  assert.ok(
+    said.some((m) => m.includes("https://auth.openai.com/oauth/authorize?state=synthetic")),
+  );
+  assert.doesNotMatch(said.join(), /synthetic-[ar]3/);
+});

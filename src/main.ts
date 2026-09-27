@@ -21,11 +21,11 @@ process.exitCode = await runCli(
     ...(process.stdout.isTTY ? { terminal: process.stdout } : {}),
     ...(process.stdin.isTTY
       ? {
-          ask: async (question: string) => {
+          ask: async (question: string, signal?: AbortSignal) => {
             const { createInterface } = await import("node:readline/promises");
             const rl = createInterface({ input: process.stdin, output: process.stdout });
             try {
-              return await rl.question(question);
+              return await rl.question(question, signal ? { signal } : {});
             } finally {
               rl.close();
             }

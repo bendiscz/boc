@@ -24,8 +24,9 @@ const HELP = `Bot of Code — offline foundation
 
 Usage:
   boc check-config <config>        Validate configuration without reading credentials
-  boc login <config> <subscription>
-                                   Authorize a subscription (GitHub Copilot device flow);
+  boc login <config> <subscription> [--browser]
+                                   Authorize a subscription (device code, or --browser for
+                                   Codex's browser sign-in with a localhost callback);
                                    writes only its credential file, never prints tokens
   boc calibration-report <config>  Compare estimates with recorded charges per subscription
   boc run <config> [--days 1,2,5] [--tui] [--calibrate]
@@ -222,14 +223,27 @@ async function calibrationReport(config: BocConfig, output: Output): Promise<voi
   );
 }
 
-async function login(config: BocConfig, subscription: string, output: Output, runtime: Runtime) {
+async function login(
+  config: BocConfig,
+  subscription: string,
+  flags: string[],
+  output: Output,
+  runtime: Runtime,
+) {
+  if (flags.length > 1 || (flags.length === 1 && flags[0] !== "--browser")) throw new UsageError();
   if (!runtime.ask) throw new AppError("Login needs an interactive terminal.");
   const ask = runtime.ask;
-  await loginSubscription(config, subscription, {
-    ask,
-    say: (message) => output.out(message),
-    signal: runtime.signal ?? new AbortController().signal,
-  });
+  await loginSubscription(
+    config,
+    subscription,
+    {
+      ask,
+      say: (message) => output.out(message),
+      signal: runtime.signal ?? new AbortController().signal,
+    },
+    undefined,
+    flags[0] === "--browser" ? "browser" : "device",
+  );
 }
 
 interface Runtime {
@@ -237,7 +251,7 @@ interface Runtime {
   /** Interactive terminal for `--tui`; absent when not a TTY. */
   readonly terminal?: NodeJS.WriteStream;
   /** Line input for interactive login; absent when stdin is not a TTY. */
-  readonly ask?: (question: string) => Promise<string>;
+  readonly ask?: (question: string, signal?: AbortSignal) => Promise<string>;
 }
 
 export async function runCli(
@@ -267,8 +281,8 @@ export async function runCli(
     output.err("Invalid command. Run boc --help.");
     return 2;
   }
-  const exactArgs = command === "login" ? 2 : 1;
-  if (command !== "ledger" && command !== "submission" && !isRun && rest.length !== exactArgs) {
+  const argsOk = command === "login" ? rest.length === 2 || rest.length === 3 : rest.length === 1;
+  if (command !== "ledger" && command !== "submission" && !isRun && !argsOk) {
     output.err("Invalid command. Run boc --help.");
     return 2;
   }
@@ -284,7 +298,8 @@ export async function runCli(
     else if (command === "status") await status(config, output);
     else if (command === "views") await views(config, output);
     else if (isRun) await run(config, rest.slice(1), output, runtime);
-    else if (command === "login") await login(config, rest[1] ?? "", output, runtime);
+    else if (command === "login")
+      await login(config, rest[1] ?? "", rest.slice(2), output, runtime);
     else if (command === "calibration-report") await calibrationReport(config, output);
     else if (command === "submission") {
       await submissionCommand([rest[0] ?? "", ...rest.slice(2)], config, output);

@@ -293,3 +293,4 @@ Codex adapter verification (2026-09-27):
   - device-code selection;
   - Anthropic login refused;
   - zero-charge early errors.
+- The operator's Codex workspace does not allow device-code login. Added `boc login … --browser`: it prints the authorization URL, cancels the paste prompt when the localhost callback arrives, and never prints tokens. `npm run check`: 141 offline tests passed.

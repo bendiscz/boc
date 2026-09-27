@@ -34,7 +34,8 @@ const LOGIN_PROVIDERS: Partial<Record<string, () => Provider>> = {
 };
 
 export interface LoginIo {
-  ask(question: string): Promise<string>;
+  /** Read one line; rejects when `signal` aborts (e.g. the browser flow completed). */
+  ask(question: string, signal?: AbortSignal): Promise<string>;
   say(message: string): void;
   readonly signal: AbortSignal;
 }
@@ -44,6 +45,7 @@ export async function loginSubscription(
   subscriptionId: string,
   io: LoginIo,
   providerOverride?: Provider,
+  method: "device" | "browser" = "device",
 ): Promise<{ modelAvailable: boolean | undefined }> {
   const subscription = config.subscriptions.find((s) => s.id === subscriptionId);
   if (!subscription) throw new AdapterError("No such subscription.");
@@ -61,10 +63,18 @@ export async function loginSubscription(
         if (prompt.type === "secret")
           throw new Error("Secret prompts are not supported; use files.");
         if (prompt.type === "select") {
-          // Prefer device-code login: no local callback server, works on headless hosts.
-          const device = prompt.options.find((o) => o.id === "device_code");
-          if (device) return device.id;
-          throw new Error("Unsupported login prompt.");
+          // Device code by default (no local callback server); browser on request.
+          const wanted = method === "browser" ? "browser" : "device_code";
+          const option = prompt.options.find((o) => o.id === wanted);
+          if (option) return option.id;
+          throw new Error(`Login method ${method} is not offered by this provider.`);
+        }
+        if (prompt.type === "manual_code") {
+          // Raced against the local callback server; aborted once the browser returns.
+          return io.ask(
+            "If the browser cannot reach this machine, paste the final redirect URL here (otherwise just wait): ",
+            prompt.signal,
+          );
         }
         if (prompt.type !== "text") throw new Error("Unsupported login prompt.");
         return io.ask(
@@ -72,7 +82,10 @@ export async function loginSubscription(
         );
       },
       notify: (event: AuthEvent) => {
-        if (event.type === "device_code") {
+        if (event.type === "auth_url") {
+          // The authorization URL carries only PKCE/state parameters, never tokens.
+          io.say(`Open this URL in a browser on this machine and sign in:\n${event.url}`);
+        } else if (event.type === "device_code") {
           io.say(`Open ${event.verificationUri} and enter the code ${event.userCode}.`);
         } else if (event.type === "progress" || event.type === "info") {
           io.say(event.message);

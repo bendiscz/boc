@@ -98,7 +98,7 @@ Stop BoC before any command that changes state. They all take the same locks.
 
 ## Calibration run (Codex)
 
-Use the same steps as the Copilot calibration, with a Codex subscription (`provider: "openai-codex"`, for example model `gpt-6-sol`) and rates from the [Codex pricing page](https://developers.openai.com/codex/pricing). The native unit is Codex credits per 1M tokens. `boc login` selects ChatGPT's device-code sign-in automatically: open the printed URL and enter the code. Compare the calibration report with the Codex usage dashboard (`https://chatgpt.com/codex/settings/usage`). While usage stays inside the included allowance, the dashboard may show percentages rather than credits.
+Use the same steps as the Copilot calibration, with a Codex subscription (`provider: "openai-codex"`, for example model `gpt-6-sol`) and rates from the [Codex pricing page](https://developers.openai.com/codex/pricing). The native unit is Codex credits per 1M tokens. `boc login` uses ChatGPT's device-code sign-in by default: open the printed URL and enter the code. If your workspace does not allow device codes, use `boc login <config> <subscription> --browser`. BoC prints a sign-in URL and listens on `localhost:1455` for the redirect, as the Codex CLI does. Open the URL in a browser on the same machine. If the browser cannot reach this machine, paste the final redirect URL into the terminal instead. It contains a short-lived, single-use authorization code, which is not stored. Compare the calibration report with the Codex usage dashboard (`https://chatgpt.com/codex/settings/usage`). While usage stays inside the included allowance, the dashboard may show percentages rather than credits.
 
 ## Before each event
 
