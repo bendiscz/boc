@@ -2,11 +2,11 @@
 
 ## Current state
 
-- Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, 22 offline tests, build/lint/type checks, and credential-free CI configuration.
+- Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
 - No live provider adapter, AoC client, solver, durable ledger, or TUI yet. Both real providers are deliberately ineligible for chargeable work; see `FEASIBILITY.md`.
 - A synthetic Docker isolation probe passed locally; production execution and dependency acquisition remain unimplemented.
 - Repository: `https://github.com/bendiscz/boc.git`, branch `main`.
-- Bootstrap commit: `676e152`. The initial checkout used `master`; GitHub's default branch is `main`, so ongoing development follows `main`.
+- Only branch: `main` (`master` deleted). History was rewritten once on operator request to set the author to Martin Benda <martin@bendovi.cz>, configured locally for this repository.
 - The operator clarified credit-only budgets, multiple subscriptions, runtime prohibition on retrieving solutions, and an AI/bot-permitted private leaderboard.
 - No BoC provider credentials or AoC cookie have been requested or used. No live puzzle was fetched or answer submitted.
 - Selected Node.js 24 LTS (minimum/tested 24.21.0) and pinned Pi family 0.87.1, TypeScript 6.0.3, Biome 2.5.14, and Zod 4.6.5. npm `11.19.0` was used locally. Dependencies and lockfile are committed; lifecycle scripts are disabled.
@@ -16,7 +16,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: complete milestone 1's unchecked transport-admission proof using fake providers only. Trace every Pi request path, implement a narrow guarded boundary with no ambient resources/credentials, and prove that normal turns, tool loops, retries, compaction, summaries, and cache warming cannot bypass admission (or remain disabled). Then implement milestone 2's durable four-counter credit ledger and recovery tests. Do not begin live calls while either eligibility gate is unresolved.
+Next concrete task: milestone 2 — implement the durable four-counter credit ledger (`src/budget/ledger.ts`) behind the `Admission`/`Reservation` interface in `src/pi/guarded-streams.ts`: atomic multi-counter reservation with exact `Credits`, crash-safe persistence (write-ahead journal + fsync + atomic rename, single-writer lock), reconciliation from authoritative receipts, and held-on-uncertainty semantics that survive restart. Then define event/puzzle/attempt identifiers and the private artifact layout. Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -26,7 +26,7 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 - [x] Read current installed Pi SDK docs and relevant examples; choose and pin supported Node.js/Pi versions.
 - [x] Investigate each requested provider's current authentication, enterprise restrictions, credit definition, usage reporting, and conservative per-call bound. Sources and unresolved eligibility gates are in `FEASIBILITY.md`; no live validation.
-- [ ] Verify a pre-dispatch enforcement point that covers all Pi calls, including retries, compaction, and auxiliary work. Disable hidden/unaccounted chargeable behavior until guarded.
+- [x] Verify a pre-dispatch enforcement point that covers all Pi calls, including retries, compaction, and auxiliary work. Proven with fakes; see FEASIBILITY.md for the test-only runtime facade limitation.
 - [x] Define subscription identity, native credit units, pool allocation, and budget configuration semantics.
 - [x] Select networkless Linux-container isolation and document prerequisites; run a synthetic local probe. Production executor and controlled dependency-acquisition implementation remain in milestone 4.
 - [x] Scaffold TypeScript, package scripts, lockfile, formatting/linting, type checks, offline tests, and CI. CI must not need private credentials or puzzle data.
@@ -96,4 +96,11 @@ Foundation verification (2026-09-27):
 - `npm run test:sandbox -- <local Node image ID>` — passed the synthetic isolation checks on Docker 29.8.0; no image pull or puzzle/provider traffic.
 - Independent read-only review found no P1 issues and one P2 verification gap: a non-root write failure did not prove read-only root. Added a `/proc/self/mountinfo` assertion and reran all checks. A negative-control run with `--read-only` removed correctly failed that assertion.
 - Representative credential, private artifact, dependency, and build paths were confirmed ignored by Git.
-- GitHub CI is configured, not yet claimed as remotely verified. No live provider or AoC testing.
+- GitHub CI passed remotely for the foundation commit. No live provider or AoC testing.
+
+Admission-boundary verification (2026-09-27):
+
+- Added `@earendil-works/pi-ai@0.87.1` as a direct dependency. It is **not** deduplicated: `pi-coding-agent` ships a shrinkwrap with its own nested copy, so two pi-ai module instances exist at runtime. Known risk (e.g. `instanceof`/registry mismatches); the current code relies only on structural stream objects. Revisit before live integration.
+- `npm run check` — 46 offline tests (15 guard unit tests, 9 fake-provider `AgentSession` tests) passed with lint, type checks, and build.
+- Independent review: two P1s (compaction test never dispatched; request-rewriting options forwarded after admission) and five P2s (denials faulted the guard; aborted terminals were settled; forged-model test was blocked by the fixture, not the guard; retry tests could not observe retries; incorrect dedupe claim). All fixed and covered by tests; doc claims corrected.
+- Probe confirmed Pi `setModel` accepts a forged same-provider model; the guard (not the fixture) rejects its dispatch before admission (regression test).

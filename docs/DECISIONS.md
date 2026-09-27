@@ -59,3 +59,7 @@ Store amounts as JSON decimal strings and represent them internally as `bigint` 
 ## D010 — Networkless container execution, not host tools
 
 Select a separate non-root, resource-limited, networkless Linux container as the initial generated-code boundary. Keep the trusted orchestrator and all credentials outside it. A local Docker synthetic probe passed; no production executor or toolchain image has been built. The final image must contain Python/uv, Node.js, Go, and Rust even if those tools are already installed on the host. Require Docker/VM provisioning rather than silently falling back to host execution. Dependency acquisition remains separate and controlled. See [isolation requirements and evidence](FEASIBILITY.md#solver-isolation-decision).
+
+## D011 — Admission at the provider-stream boundary
+
+Enforce credit admission inside the provider `stream`/`streamSimple` implementation handed to Pi, not around `session.prompt()` or `agent.streamFunction`, because tool loops, compaction, summaries, and cache warming each issue their own dispatches. One reservation per dispatch attempt; no implicit retries; completion is withheld until authoritative settlement; uncertain outcomes stay reserved and fault the boundary. Model selection in Pi is not a security control, so the guard re-checks the exact model on every dispatch. The Pi SDK's concrete `ModelRuntime` requirement is an open integration issue (see FEASIBILITY.md); the facade cast is test-only.
