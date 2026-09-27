@@ -58,7 +58,7 @@ Store amounts as JSON decimal strings and represent them internally as `bigint` 
 
 ## D010 — Networkless container execution, not host tools
 
-Select a separate non-root, resource-limited, networkless Linux container as the initial generated-code boundary. Keep the trusted orchestrator and all credentials outside it. A local Docker synthetic probe passed; no production executor or toolchain image has been built. The final image must contain Python/uv, Node.js, Go, and Rust even if those tools are already installed on the host. Require Docker/VM provisioning rather than silently falling back to host execution. Dependency acquisition remains separate and controlled. See [isolation requirements and evidence](FEASIBILITY.md#solver-isolation-decision).
+Select a separate non-root, resource-limited, networkless Linux container as the initial generated-code boundary. Keep the trusted orchestrator and all credentials outside it. A local Docker synthetic probe passed. The production executor (`src/sandbox/executor.ts`) and toolchain image (`sandbox/Dockerfile`) now exist; see `SANDBOX.md`. Each command runs in a fresh container with a read-only workspace mount and a tmpfs scratch area. Libraries are baked in at image build time, which is the controlled dependency-acquisition path. The final image must contain Python/uv, Node.js, Go, and Rust even if those tools are already installed on the host. Require Docker/VM provisioning rather than silently falling back to host execution. Dependency acquisition remains separate and controlled. See [isolation requirements and evidence](FEASIBILITY.md#solver-isolation-decision).
 
 ## D011 — Admission at the provider-stream boundary
 
@@ -89,3 +89,11 @@ Only the orchestrator constructs the AoC client (`src/aoc/client.ts`). The clien
 `AocService` caches statements and inputs through the private layout and records their hashes in the run state. It never silently re-downloads a recorded input. Submissions go through the D013 write-ahead record. A failure proven locally before dispatch records `not-sent`, and the answer can be resubmitted. Any other failure, or any unrecognized response, records `uncertain`. An uncertain submission is resolved only by reading the puzzle page, never by resubmitting. Parsed waits get a margin; implied but unparseable waits use conservative defaults.
 
 Release timing is midnight EST (05:00 UTC), per the official FAQ; event length is not assumed. No live AoC request may happen before milestone 6 validation.
+
+## D015 — BoC-owned agent loop over pi-agent-core
+
+This resolves the `ModelRuntime` question in FEASIBILITY.md. The solver uses `pi-agent-core`'s `Agent` directly (`src/solver/agent.ts`), not `pi-coding-agent`'s `AgentSession`. `Agent` needs only an explicit `streamFn`, which BoC sets to the guarded streams (D011). No `ModelRuntime`, provider catalog, ambient credential discovery, compaction, branch summaries, cache warming, built-in tools, or resource discovery exist in this loop. The default-stream fallback is never used because `streamFn` is always passed. BoC sets `transport: "sse"`, sequential tool execution, and a hard turn cap independent of credits. Persistence lives in BoC's own journals, and transcripts will be private artifacts.
+
+`@earendil-works/pi-agent-core@0.87.1` is now a direct dependency, and it deduplicates with the direct `pi-ai`. `pi-coding-agent` remains a dependency for the existing admission-boundary tests and settings/resources helpers. It is not used by the solver and may be removed later. The test-only `ModelRuntime` facade cast must not be used in production.
+
+Solver tools (`src/solver/tools.ts`) are exactly `write_file`, `read_file`, `list_files`, `run`, and `propose_answer`. File tools reach only the host-side attempt workspace. `run` reaches only the networkless executor. `propose_answer` validates the answer and hands it to the orchestrator, which alone decides whether to submit.

@@ -19,6 +19,7 @@ See [`examples/boc.config.json`](../examples/boc.config.json). It contains synth
 - `storageDir`: private runtime artifact directory.
 - `aoc.sessionCookieFile`: path to an externally supplied cookie file (owner-only permissions required when used).
 - `aoc.contact` (optional for validation, required by the AoC client): operator contact placed in the `User-Agent`, e.g. an email address; printable ASCII without `;`, `(`, or `)`.
+- `sandbox.image` (optional for validation, required for solving): the solver toolchain image, pinned as a local image ID (`sha256:...`) or `name@sha256:...`; see `SANDBOX.md`.
 - `creditPools`: one or more native-unit aggregate allocations.
 - `subscriptions`: one or more explicitly identified provider subscriptions.
 

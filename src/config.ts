@@ -37,6 +37,16 @@ const configSchema = z
         .refine((value) => !/[;()]/.test(value))
         .optional(),
     }),
+    /** Solver executor (D010). Required for solving; not needed to validate budgets. */
+    sandbox: z
+      .strictObject({
+        image: z
+          .string()
+          .regex(
+            /^(sha256:[a-f0-9]{64}|[a-z0-9][a-z0-9._/-]{0,199}@sha256:[a-f0-9]{64})(?![\s\S])/,
+          ),
+      })
+      .optional(),
     creditPools: z
       .array(
         z.strictObject({

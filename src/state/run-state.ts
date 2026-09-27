@@ -207,7 +207,7 @@ export function submissionBlocker(
   now: Date,
 ): string | undefined {
   const partState = state.puzzles[puzzleId]?.parts[partNumber];
-  if (!partState || partState.status !== "proposed") return "part-not-proposed";
+  if (partState?.status !== "proposed") return "part-not-proposed";
   if (partState.proposed?.answer !== candidate) return "answer-not-proposed";
   if (partState.submissions.some((s) => s.answer === candidate && !UNJUDGED.includes(s.verdict))) {
     return "duplicate-answer";

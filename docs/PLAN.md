@@ -3,6 +3,7 @@
 ## Current state
 
 - Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
+- Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
 - Offline AoC transport (D014, `AOC.md`): pinned-host cookie-file client, conservative response parsers, release calendar, and a cached, write-ahead submission service, tested only with fake transports and synthetic HTML.
 - Durable run-state journal with a validated puzzle/part state machine, private artifact layout, derived Markdown views, and `status`/`views`/`ledger` CLI commands (D013).
 - Durable four-counter credit ledger (`src/budget/ledger.ts`) and ledger-backed `Admission` (`src/budget/admission.ts`) implemented and tested offline with fake providers; see D012. No production `CreditMeter` exists, so nothing can be admitted for a real provider.
@@ -19,7 +20,18 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: milestone 4. First decide the `ModelRuntime` integration (FEASIBILITY.md: upstream injection point, audited facade, or a BoC-owned loop over `pi-agent-core`). Read the installed Pi SDK docs again for this and record the choice as a decision. Then build the solver executor from D010: a digest-pinned toolchain image definition (Python/uv, Node.js, Go, Rust), a networkless per-attempt container runner with resource limits, bounded output, and artifact export into `layout.attempt(...)`. Next come constrained solver tools (write file, run program, read allowed files) that only reach that executor, and a solve-loop skeleton driving `RunStore` and `AocService` with fake model/AoC transports. The operator has settled the AoC pacing question: no artificial delays in a solve burst, and no needless requests (see `AOC.md`).
+Next concrete task: milestone 4, the solve-loop orchestrator (`src/solver/run.ts`), with fake model and AoC transports. For one puzzle part it should:
+
+- create the attempt workspace through `layout.attempt(...)` and `Workspace.create`;
+- place `input.txt`;
+- build the solver prompt from the cached statement (puzzle text goes to the model, never into Git);
+- record `attempt-started` and run `createSolverAgent` with ledger-backed admission;
+- store the transcript privately in the attempt directory;
+- on `propose_answer`, record `attempt-finished` and submit through `AocService`, handling the verdict: retry with a new attempt after wrong answers within credit and attempt caps, wait out embargoes by sleeping, and continue to part 2 after a correct answer;
+- map budget denial to `budget-exhausted`;
+- regenerate the views.
+
+After that, add budget-aware subscription selection. Keep the executor and image as they are unless tests reveal defects.
 
 Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -53,8 +65,8 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 ### 4. Solver and subscription orchestration
 
-- [ ] Integrate Pi with explicit resources, custom constrained tools, private session persistence, and no inherited personal extensions or credentials.
-- [ ] Implement isolated Python/uv, Node.js, Go, and Rust execution with resource limits and controlled dependencies.
+- [x] Integrate Pi with explicit resources, custom constrained tools, private session persistence, and no inherited personal extensions or credentials. (D015 agent loop and tools; transcript persistence arrives with the solve loop.)
+- [x] Implement isolated Python/uv, Node.js, Go, and Rust execution with resource limits and controlled dependencies. (`SANDBOX.md`; hash-pinned PyPI acquisition outstanding.)
 - [ ] Build the solve → test → propose answer → trusted submit → next part loop.
 - [ ] Add budget-aware subscription/model selection and compliant fallback that preserves all reservations and limits.
 - [ ] Verify no solution-fetching path exists through tools, subprocesses, or unrelated host files.
@@ -133,3 +145,25 @@ AoC transport verification (2026-09-27):
   - Fixed: wait clauses are no longer cut at periods.
   - Recorded, not changed: reconciliation's `not-correct` may block an answer the server never judged (errs toward no duplicates), the POSIX-only cookie permission check (the orchestrator targets POSIX hosts), and final-day handling.
 - Operator pacing decision applied: removed the 5-second minimum spacing and added a sliding-window bug brake (`rateCap`, default 10 per 10 minutes). The unlock retries and the answer-wait embargo are unchanged. `npm run check` — 87 offline tests passed.
+
+Solver loop and executor verification (2026-09-27):
+
+- Added `@earendil-works/pi-agent-core@0.87.1` (deduplicates with the direct `pi-ai`). `npm run check`: 93 offline tests passed. New coverage:
+  - Workspace confinement, symlink refusal, and limits.
+  - Output sanitization.
+  - Docker argument isolation and the digest-only image rule.
+  - A fake-provider solver run (write → run → propose, with 3 ledger-admitted turns and no extra call after the proposal).
+  - Credit exhaustion and the turn cap stopping a looping solver.
+  - Invalid proposals and paths returned to the model as tool errors.
+- Built `sandbox/Dockerfile` locally (arm64, Docker Desktop 29.8.0) behind the operator's TLS-intercepting proxy. The operator's CA was supplied as a BuildKit secret; the image history, `/tmp`, and the file tree were checked and contain no copy of it. Toolchains: Python 3.13.5, uv 0.8.22, Node 24.20.0, Go 1.24.4, rustc/cargo 1.85.1.
+- `npm run test:executor -- <image-id> --toolchains` passed:
+  - isolation: non-root, no host variables, read-only `/work`, writable `/tmp`, no external interface, bounded output, and a killed and removed timed-out container;
+  - toolchains: python3 with numpy/scipy/sympy/networkx, `uv run --no-project`, node, `go run`, rustc, and cargo (after copying the project to `/tmp`, because `/work` is read-only; the tool description tells the model this).
+- Not yet done: a Linux-host executor run, hash-pinned uv/PyPI, and any live model use.
+- Independent review (child Pi, read-only):
+  - Fixed: a proposal made in the same turn as other tool calls did not end the loop, because pi-agent-core terminates only when every tool result asks to. `shouldStop` in `finishTurn` now enforces it, and only one proposal is accepted per run.
+  - Fixed: aborts now kill the container (the executor accepts `signal`; verified in the Docker probe).
+  - Fixed: CSI/OSC escape sequences are fully stripped, and workspace `mkdir` errors are typed.
+  - Not changed: container-name cleanup, since `--rm` plus a killed container covered all probe runs.
+  - Not changed: the Linux parent-directory permission concern. The container sees only the bind-mounted directory at `/work`, and host parents are resolved by the daemon; this still needs confirmation on a Linux host.
+- `npm run check`: 94 offline tests passed.
