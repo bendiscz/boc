@@ -126,3 +126,19 @@ The adapter is implemented (`src/providers/github-copilot.ts`) and tested offlin
 - **Against the D016 criteria.** No call exceeded its estimate (max 0.026, limit 1.5×), and the totals agree well within 10 %. **Passed.**
 - **Observation.** The estimates are very conservative, about 86× the actual in total, because the 16000-token output cap dominates each reservation (roughly 26 credits per call). The limits are therefore not exceeded, but near a limit BoC may stop with up to one reservation of headroom unused. If that matters, a lower `assumedMaxOutputTokens` narrows the gap, at the risk of truncating reasoning-heavy answers.
 - **Recheck** rates, the model catalog, and a small calibration before each event.
+
+## Anthropic authentication findings (2026-09-27)
+
+The operator asked for the same login Pi uses for Anthropic: a Claude.ai subscription OAuth credential (`sk-ant-oat…`/`sk-ant-ort…`) on an Enterprise plan. This path is **not used**. It conflicts with Anthropic's published policy.
+
+- **Official policy.** [Claude Code legal and compliance, "Authentication and credential use"](https://code.claude.com/docs/en/legal-and-compliance), fetched 2026-09-27:
+  - OAuth authentication "is intended exclusively for purchasers of Claude Free, Pro, Max, Team, and Enterprise subscription plans and is designed to support ordinary use of Claude Code and other native Anthropic applications".
+  - Developers building products "should use API key authentication through Claude Console or a supported cloud provider".
+  - Developers "may not collect, store, or intermediate Claude.ai credentials or session tokens — sign-in to a Claude account must complete through Anthropic's own flow".
+  - The policy explicitly permits an end user "signing in to the unmodified Claude Code binary with their own Claude subscription".
+  - The [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) says the same for SDK-built agents unless previously approved.
+- **What Pi does.** pi-ai 0.87.1's Anthropic OAuth path (`auth/oauth/anthropic.js`, `api/anthropic-messages.js`) uses Claude Code's OAuth client ID. With an OAuth token it sends `user-agent: claude-cli/…`, `x-app: cli`, and the `claude-code-20250219` beta, and renames tools to Claude Code names. BoC would thereby present itself as Claude Code while storing and using subscription tokens. That is the pattern the policy excludes, and it would also violate BoC's own rule against evading provider policy.
+- **Compliant options:**
+  1. **Anthropic API key** from Claude Console, for example an organization or workspace under the company's agreement. Usage is billed per token to the key owner. Console workspace spend limits can serve as the provider-side cap. pi-ai's `anthropic-messages` API always sends `max_tokens` and reports usage, so estimates and `derived` charges should be accurate. This is the recommended path.
+  2. **A supported cloud provider** (Amazon Bedrock or Google Vertex AI) with the organization's own cloud credentials.
+  3. **Driving the unmodified Claude Code binary** signed in with the operator's own subscription. This is permitted for an end user, but it does not fit BoC's architecture: Claude Code runs its own tool loop and web tools on the host, outside BoC's guard, ledger, and container isolation, and the policy frames subscription limits around "ordinary, individual usage". Not recommended.
