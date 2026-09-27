@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { type FileHandle, mkdir, open, readFile, unlink } from "node:fs/promises";
-import { hostname } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import type { BocConfig } from "../config.ts";
 import { isPuzzleId, type PuzzleId } from "../state/ids.ts";
+import { Journal, JournalError } from "../state/journal.ts";
 import {
   addCredits,
   CREDIT_PATTERN,
@@ -32,8 +31,6 @@ import {
  */
 
 export const LEDGER_VERSION = 1;
-const JOURNAL = "journal.jsonl";
-const LOCK = "ledger.lock";
 
 export type LedgerErrorCode =
   | "locked"
@@ -179,17 +176,12 @@ function get(map: Map<string, Credits>, key: string): Credits {
   return map.get(key) ?? ZERO_CREDITS;
 }
 
-function isNotFound(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
-}
-
-async function syncDirectory(directory: string): Promise<void> {
-  const handle = await open(directory, "r");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
+function toLedgerError(error: unknown): LedgerError {
+  if (error instanceof LedgerError) return error;
+  if (error instanceof JournalError) {
+    return new LedgerError(error.code, `Credit ledger: ${error.message}`);
   }
+  return new LedgerError("corrupt", "Cannot use the credit ledger.");
 }
 
 export function ledgerDirectory(config: BocConfig): string {
@@ -197,9 +189,7 @@ export function ledgerDirectory(config: BocConfig): string {
 }
 
 export class CreditLedger {
-  readonly #directory: string;
   readonly #config: BocConfig;
-  readonly #now: () => Date;
   readonly #session = randomUUID();
   readonly #subscriptionLimits = new Map<string, Limits>();
   readonly #poolLimits = new Map<string, Limits>();
@@ -209,16 +199,10 @@ export class CreditLedger {
   readonly #known = new Set<string>();
   readonly #pendingOverruns = new Set<string>();
   readonly #puzzles = new Set<PuzzleId>();
-  #handle: FileHandle | undefined;
-  #seq = 0;
-  #fault: string | undefined;
-  #closed = false;
-  #tail: Promise<unknown> = Promise.resolve();
+  #journal: Journal<LedgerRecord> | undefined;
 
   private constructor(options: LedgerOptions) {
-    this.#directory = options.directory;
     this.#config = options.config;
-    this.#now = options.now ?? (() => new Date());
     const limits = (value: { event: string; perPuzzle: string }): Limits => ({
       event: parseCredits(value.event),
       perPuzzle: parseCredits(value.perPuzzle),
@@ -233,115 +217,46 @@ export class CreditLedger {
 
   static async open(options: LedgerOptions): Promise<CreditLedger> {
     const ledger = new CreditLedger(options);
-    await mkdir(options.directory, { recursive: true, mode: 0o700 });
-    await syncDirectory(dirname(options.directory));
-    await CreditLedger.#acquireLock(options.directory);
+    let opened: { journal: Journal<LedgerRecord>; records: LedgerRecord[] };
     try {
-      await ledger.#load();
-      await ledger.#append({ type: "open", session: ledger.#session });
+      opened = await Journal.open({
+        directory: options.directory,
+        schema: recordSchema,
+        ...(options.now ? { now: options.now } : {}),
+      });
     } catch (error) {
-      await ledger.#handle?.close().catch(() => {});
-      await unlink(join(options.directory, LOCK)).catch(() => {});
-      if (error instanceof LedgerError) throw error;
-      throw new LedgerError("corrupt", "Cannot open the credit ledger.");
+      throw toLedgerError(error);
+    }
+    ledger.#journal = opened.journal;
+    try {
+      for (const [index, record] of opened.records.entries()) {
+        if ((index === 0) !== (record.type === "create")) {
+          throw new LedgerError("corrupt", "Credit ledger journal is corrupt.");
+        }
+        ledger.#replay(record);
+      }
+      if (opened.journal.empty) {
+        await opened.journal.append({
+          type: "create",
+          version: LEDGER_VERSION,
+          eventYear: options.config.event.year,
+          ledger: randomUUID(),
+        });
+      }
+      await opened.journal.append({ type: "open", session: ledger.#session });
+    } catch (error) {
+      await opened.journal.close().catch(() => {});
+      throw toLedgerError(error);
     }
     return ledger;
   }
 
-  /**
-   * Remove a lock left by a dead process on this host. Refuses when the owner may
-   * still be alive or belongs to another host; PID reuse errs on the side of refusal.
-   */
+  /** See `Journal.breakStaleLock`. */
   static async breakStaleLock(directory: string): Promise<void> {
-    let owner: { pid?: unknown; host?: unknown };
     try {
-      owner = JSON.parse(await readFile(join(directory, LOCK), "utf8"));
+      await Journal.breakStaleLock(directory);
     } catch (error) {
-      if (isNotFound(error)) return;
-      throw new LedgerError(
-        "locked",
-        "Ledger lock is unreadable; remove it manually after review.",
-      );
-    }
-    if (owner.host !== hostname() || typeof owner.pid !== "number") {
-      throw new LedgerError("locked", "Ledger lock belongs to another host or is malformed.");
-    }
-    try {
-      process.kill(owner.pid, 0);
-      throw new LedgerError("locked", "Ledger lock owner is still running.");
-    } catch (error) {
-      if (error instanceof LedgerError) throw error;
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
-        throw new LedgerError("locked", "Cannot determine whether the lock owner is running.");
-      }
-    }
-    await unlink(join(directory, LOCK));
-  }
-
-  static async #acquireLock(directory: string): Promise<void> {
-    let handle: FileHandle;
-    try {
-      handle = await open(join(directory, LOCK), "wx", 0o600);
-    } catch {
-      throw new LedgerError("locked", "The credit ledger is locked by another process.");
-    }
-    try {
-      await handle.writeFile(
-        `${JSON.stringify({ pid: process.pid, host: hostname(), at: new Date().toISOString() })}\n`,
-      );
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    await syncDirectory(directory);
-  }
-
-  async #load(): Promise<void> {
-    const path = join(this.#directory, JOURNAL);
-    let content: string | undefined;
-    try {
-      content = await readFile(path, "utf8");
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-    }
-    if (content !== undefined) {
-      const end = content.lastIndexOf("\n") + 1;
-      if (end !== content.length) {
-        // Torn tail: never fsynced as a complete record, so never acknowledged.
-        const handle = await open(path, "r+");
-        try {
-          await handle.truncate(Buffer.byteLength(content.slice(0, end)));
-          await handle.sync();
-        } finally {
-          await handle.close();
-        }
-        content = content.slice(0, end);
-      }
-    }
-    this.#handle = await open(path, "a", 0o600);
-    if (!content) {
-      await this.#append({
-        type: "create",
-        version: LEDGER_VERSION,
-        eventYear: this.#config.event.year,
-        ledger: randomUUID(),
-      });
-      await syncDirectory(this.#directory);
-      return;
-    }
-    const lines = content.slice(0, -1).split("\n");
-    for (const [index, line] of lines.entries()) {
-      let record: LedgerRecord;
-      try {
-        record = recordSchema.parse(JSON.parse(line));
-      } catch {
-        throw new LedgerError("corrupt", "Credit ledger journal is corrupt.");
-      }
-      if (record.seq !== index + 1 || (index === 0) !== (record.type === "create")) {
-        throw new LedgerError("corrupt", "Credit ledger journal is corrupt.");
-      }
-      this.#replay(record);
-      this.#seq = record.seq;
+      throw toLedgerError(error);
     }
   }
 
@@ -417,32 +332,17 @@ export class CreditLedger {
     if (actual > held.amount) this.#pendingOverruns.add(held.id);
   }
 
-  async #append(body: RecordBody): Promise<void> {
-    if (!this.#handle) throw new LedgerError("closed", "Credit ledger is closed.");
-    const record = { seq: this.#seq + 1, at: this.#now().toISOString(), ...body };
-    // Validate what is written so that replay can never reject our own output.
-    if (!recordSchema.safeParse(record).success) {
-      throw new LedgerError("invalid", "Invalid ledger record.");
-    }
-    try {
-      // appendFile loops until the whole line is written (O_APPEND positions it).
-      await this.#handle.appendFile(`${JSON.stringify(record)}\n`, "utf8");
-      await this.#handle.sync();
-    } catch {
-      this.#fault = "journal-write-failed";
-      throw new LedgerError("faulted", "Credit ledger write failed; the ledger is faulted.");
-    }
-    this.#seq = record.seq;
+  #append(body: RecordBody): Promise<LedgerRecord> {
+    if (!this.#journal) throw new LedgerError("closed", "Credit ledger is closed.");
+    return this.#journal.append(body);
   }
 
   #serialize<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.#closed) return Promise.reject(new LedgerError("closed", "Credit ledger is closed."));
-    const result = this.#tail.then(() => {
-      if (this.#fault) throw new LedgerError("faulted", "Credit ledger is faulted.");
-      return operation();
+    if (!this.#journal)
+      return Promise.reject(new LedgerError("closed", "Credit ledger is closed."));
+    return this.#journal.run(operation).catch((error: unknown) => {
+      throw toLedgerError(error);
     });
-    this.#tail = result.catch(() => {});
-    return result;
   }
 
   /** Atomically check all four counters and durably reserve before any dispatch. */
@@ -499,7 +399,7 @@ export class CreditLedger {
         });
       } catch (error) {
         // A failed write may still be on disk: count it as held (fail closed).
-        if (error instanceof LedgerError && error.code === "faulted") this.#applyReserve(held);
+        if (error instanceof JournalError && error.code === "faulted") this.#applyReserve(held);
         throw error;
       }
       this.#applyReserve(held);
@@ -582,7 +482,7 @@ export class CreditLedger {
     }
     return {
       eventYear: this.#config.event.year,
-      fault: this.#fault,
+      fault: this.#journal?.faulted ? "journal-write-failed" : undefined,
       pendingOverruns: [...this.#pendingOverruns],
       held: [...this.#held.values()].map((held) => ({
         id: held.id,
@@ -597,17 +497,8 @@ export class CreditLedger {
     };
   }
 
-  /**
-   * Rejects new operations immediately; operations queued earlier drain first
-   * (they were chained on #tail before close was called), then the journal and
-   * lock are released.
-   */
+  /** Drains operations queued before the call, then releases the journal and lock. */
   async close(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
-    await this.#tail;
-    await this.#handle?.close();
-    this.#handle = undefined;
-    await unlink(join(this.#directory, LOCK));
+    await this.#journal?.close();
   }
 }

@@ -222,12 +222,12 @@ test("a crashed owner's lock blocks opening until proven stale", async (t) => {
   await assert.rejects(CreditLedger.breakStaleLock(dir), /still running/);
   const child = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"]);
   const deadPid = Number(child.stdout.toString());
-  await writeFile(join(dir, "ledger.lock"), JSON.stringify({ pid: deadPid, host: hostname() }));
+  await writeFile(join(dir, "journal.lock"), JSON.stringify({ pid: deadPid, host: hostname() }));
   await CreditLedger.breakStaleLock(dir);
   const second = await openLedger(t, dir);
   assert.equal(counterOf(second, "pool", "copilot-pool", day1).reserved, c("1"));
   assert.equal(second.status().held[0]?.orphaned, true);
-  await writeFile(join(dir, "ledger.lock"), JSON.stringify({ pid: deadPid, host: "elsewhere" }));
+  await writeFile(join(dir, "journal.lock"), JSON.stringify({ pid: deadPid, host: "elsewhere" }));
   await assert.rejects(CreditLedger.breakStaleLock(dir), /another host/);
 });
 
@@ -329,7 +329,7 @@ test("ledger files are private and closed ledgers reject work", async (t) => {
   assert.equal((await stat(join(dir, "journal.jsonl"))).mode & 0o077, 0);
   await ledger.close();
   await assert.rejects(reserve(ledger, "1"), /closed/);
-  await assert.rejects(stat(join(dir, "ledger.lock")));
+  await assert.rejects(stat(join(dir, "journal.lock")));
   assert.equal(ledgerDirectory(config({})), join("/synthetic/var", "ledger", "2025"));
 });
 
