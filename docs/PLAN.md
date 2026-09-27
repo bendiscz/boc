@@ -3,6 +3,7 @@
 ## Current state
 
 - Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
+- Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
 - Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
 - Offline AoC transport (D014, `AOC.md`): pinned-host cookie-file client, conservative response parsers, release calendar, and a cached, write-ahead submission service, tested only with fake transports and synthetic HTML.
 - Durable run-state journal with a validated puzzle/part state machine, private artifact layout, derived Markdown views, and `status`/`views`/`ledger` CLI commands (D013).
@@ -20,18 +21,16 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: milestone 4, the solve-loop orchestrator (`src/solver/run.ts`), with fake model and AoC transports. For one puzzle part it should:
+Next concrete task: finish milestone 4 and begin milestone 5.
 
-- create the attempt workspace through `layout.attempt(...)` and `Workspace.create`;
-- place `input.txt`;
-- build the solver prompt from the cached statement (puzzle text goes to the model, never into Git);
-- record `attempt-started` and run `createSolverAgent` with ledger-backed admission;
-- store the transcript privately in the attempt directory;
-- on `propose_answer`, record `attempt-finished` and submit through `AocService`, handling the verdict: retry with a new attempt after wrong answers within credit and attempt caps, wait out embargoes by sleeping, and continue to part 2 after a correct answer;
-- map budget denial to `budget-exhausted`;
-- regenerate the views.
-
-After that, add budget-aware subscription selection. Keep the executor and image as they are unless tests reveal defects.
+1. Add a solution-retrieval audit test (milestone 4, last item). It should enumerate the solver tool set, and assert the executor arguments and the absence of any network, host-file, or credential path reachable from tools. It should also run the opt-in Docker probe for DNS/HTTP failure, if not already covered.
+2. Add `boc run <config> [--past <days>] [--headless]` (`src/app.ts`). It should:
+   - load the config, open the ledger, run store, and AoC service, and wait for releases with `waitForRelease`;
+   - bind subscriptions through `selectSubscription` plus a provider adapter registry. The registry is empty today, so the command must fail closed with a clear "no eligible provider" message;
+   - regenerate the private views after each part;
+   - shut down gracefully on SIGINT (abort signal; journals already stay consistent).
+   Test it with injected fake adapters.
+3. Build a minimal TUI and headless progress output from the `onEvent` stream and `renderEventSummary`.
 
 Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -67,8 +66,8 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 - [x] Integrate Pi with explicit resources, custom constrained tools, private session persistence, and no inherited personal extensions or credentials. (D015 agent loop and tools; transcript persistence arrives with the solve loop.)
 - [x] Implement isolated Python/uv, Node.js, Go, and Rust execution with resource limits and controlled dependencies. (`SANDBOX.md`; hash-pinned PyPI acquisition outstanding.)
-- [ ] Build the solve → test → propose answer → trusted submit → next part loop.
-- [ ] Add budget-aware subscription/model selection and compliant fallback that preserves all reservations and limits.
+- [x] Build the solve → test → propose answer → trusted submit → next part loop. (`src/solver/run.ts`, fake transports only.)
+- [x] Add budget-aware subscription/model selection and compliant fallback that preserves all reservations and limits. (`src/budget/select.ts`; the ledger still admits every call.)
 - [ ] Verify no solution-fetching path exists through tools, subprocesses, or unrelated host files.
 
 ### 5. Terminal experience and recoverability
@@ -167,3 +166,19 @@ Solver loop and executor verification (2026-09-27):
   - Not changed: container-name cleanup, since `--rm` plus a killed container covered all probe runs.
   - Not changed: the Linux parent-directory permission concern. The container sees only the bind-mounted directory at `/work`, and host parents are resolved by the daemon; this still needs confirmation on a Linux host.
 - `npm run check`: 94 offline tests passed.
+
+Solve-loop verification (2026-09-27):
+
+- `npm run check`: 101 offline tests passed. New end-to-end fake run:
+  - part 1: a wrong (too-high) answer, then a sleep for the server wait, then a correct retry, whose prompt lists the rejected answer and the bound and carries the previous files forward;
+  - part 2: unlocked, with the part 1 files copied and the part 1 answer in the prompt;
+  - 4 ledger-admitted calls, 6 AoC requests with none repeated, and a private transcript outside the container-visible workspace.
+
+  Also covered: credit exhaustion gives up without any submission; the attempt cap; no eligible subscription; a restart resuming a proposed answer without a new attempt; part 2 unavailable when not unlocked; statement text conversion; and prompt delimiters that the puzzle text cannot break.
+- Independent review (child Pi, read-only):
+  - Fixed: the workspace is now prepared before `attempt-started`, and crash debris is replaced.
+  - Fixed: file carry-over is per file, so one bad file no longer aborts the rest.
+  - Fixed: puzzle text can no longer close the prompt delimiters.
+  - Fixed: `maxAttemptsPerPart` is validated.
+  - Not changed: an answer proposed from settled turns before a later provider fault is kept as a proposal. A proposal ends the run, so this is theoretical, and the answer came from admitted, settled work.
+  - Not changed: selection does not avoid subscriptions that already hold reservations; the ledger already counts held reservations.

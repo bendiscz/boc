@@ -151,6 +151,23 @@ export class Workspace {
     return { text: slice.join("\n"), totalLines: lines.length };
   }
 
+  /** Whole file (bounded by MAX_FILE_BYTES), for trusted copying between attempts. */
+  async readAll(path: string): Promise<string> {
+    const segments = validateRelativePath(path);
+    const target = await this.#checkParents(segments, false);
+    const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => {
+      throw new WorkspaceError("No such file.");
+    });
+    try {
+      const info = await handle.stat();
+      if (!info.isFile() || info.size > MAX_FILE_BYTES)
+        throw new WorkspaceError("Cannot copy file.");
+      return await handle.readFile("utf8");
+    } finally {
+      await handle.close();
+    }
+  }
+
   async list(): Promise<WorkspaceEntry[]> {
     const result: WorkspaceEntry[] = [];
     const walk = async (directory: string, depth: number) => {

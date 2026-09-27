@@ -128,3 +128,51 @@ export function parsePuzzlePage(html: string): PuzzlePage {
     complete: /Both parts of this puzzle are complete/i.test(htmlToText(html)),
   };
 }
+
+/**
+ * Puzzle description articles as plain Markdown-like text for the solver prompt.
+ * Keeps code blocks, inline code, emphasis, and list structure; drops everything
+ * else (forms, navigation, scripts). Untrusted content: the prompt frames it as data.
+ */
+export function puzzleText(html: string): string[] {
+  const articles = [
+    ...html.matchAll(/<article\b[^>]*class="day-desc"[^>]*>([\s\S]*?)<\/article>/gi),
+  ];
+  return articles.map((match) => {
+    const body = (match[1] ?? "")
+      .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<pre[^>]*>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, (_m, code: string) => {
+        const text = decodeEntities(code.replace(/<[^>]*>/g, ""));
+        return `\n\n\`\`\`\n${text.replace(/\n$/, "")}\n\`\`\`\n\n`;
+      })
+      .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (_m, code: string) => `\`${code}\``)
+      .replace(/<(em|strong|b)[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _tag, inner: string) => `*${inner}*`)
+      .replace(/<li[^>]*>/gi, "\n- ")
+      .replace(/<\/(p|h2|ul|ol|li)>/gi, "\n")
+      .replace(/<h2[^>]*>/gi, "\n## ")
+      .replace(/<(p|ul|ol|br)[^>]*>/gi, "\n")
+      .replace(/<[^>]*>/g, "");
+    return decodeOutsideFences(body)
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  });
+}
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (match, entity: string) => {
+    if (/^#x/i.test(entity))
+      return String.fromCodePoint(Number.parseInt(entity.slice(2), 16) || 0xfffd);
+    if (entity.startsWith("#"))
+      return String.fromCodePoint(Number.parseInt(entity.slice(1), 10) || 0xfffd);
+    return ENTITIES[entity.toLowerCase()] ?? match;
+  });
+}
+
+function decodeOutsideFences(text: string): string {
+  // Code blocks were already decoded; decode the rest once.
+  return text
+    .split(/(```\n[\s\S]*?\n```)/)
+    .map((part, index) => (index % 2 === 1 ? part : decodeEntities(part)))
+    .join("");
+}

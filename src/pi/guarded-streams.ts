@@ -48,6 +48,8 @@ interface GuardedStreamsOptions {
   admission: Admission;
   /** Trusted adapter, not a model-supplied tool or arbitrary provider selection. */
   transport: ProviderStreams;
+  /** Notified once when an uncertain outcome permanently faults this guard. */
+  onFault?: () => void;
 }
 
 /**
@@ -217,7 +219,14 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
       } catch {
         // Pre-admission denials hold nothing and leave the boundary usable.
         if (reservation) {
-          faulted = true;
+          if (!faulted) {
+            faulted = true;
+            try {
+              config.onFault?.();
+            } catch {
+              // Observers must not affect the boundary.
+            }
+          }
           // Settlement owns its own failure annotation; otherwise annotate here.
           if (!settling && typeof reservation.abandon === "function") {
             await reservation
