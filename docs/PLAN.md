@@ -3,6 +3,7 @@
 ## Current state
 
 - Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
+- Durable run-state journal with a validated puzzle/part state machine, private artifact layout, derived Markdown views, and `status`/`views`/`ledger` CLI commands (D013).
 - Durable four-counter credit ledger (`src/budget/ledger.ts`) and ledger-backed `Admission` (`src/budget/admission.ts`) implemented and tested offline with fake providers; see D012. No production `CreditMeter` exists, so nothing can be admitted for a real provider.
 - No live provider adapter, AoC client, solver, or TUI yet. Both real providers are deliberately ineligible for chargeable work; see `FEASIBILITY.md`.
 - A synthetic Docker isolation probe passed locally; production execution and dependency acquisition remain unimplemented.
@@ -17,7 +18,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: milestone 2 — define event/puzzle/attempt identifiers (extend `src/state/ids.ts`, which so far has only `PuzzleId` = `day-NN`), puzzle/attempt state transitions, and the private artifact layout under `storageDir` with a readable index; then a durable run-state/event store reusing the ledger's journal discipline (fsync-before-ack, torn-tail handling, single-writer lock). Also add a `boc ledger status` CLI view and an operator reconciliation command (settle a held reservation from evidence, acknowledge overrun) before live use. Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
+Next concrete task: milestone 3 — AoC transport, offline only. First recheck the current AoC About/FAQ and any automation guidance (User-Agent, request rate) with a documentation fetch — not puzzle pages or solutions — and record it. Then implement `src/aoc/client.ts`: cookie read from the configured private file (permission check, never logged), host pinned to `adventofcode.com` over HTTPS, identifiable User-Agent, timeouts, minimum request spacing, redirects not followed, sanitized errors; cached puzzle/input downloads written through `layout.ts` and recorded as `statement-fetched`/`input-fetched`; answer-response parsing mapped onto run-state verdicts (correct, incorrect, too high/low, wait-time → `retryAfter`, wrong level/already solved → `uncertain`), with unknown responses treated as `uncertain`. Use only synthetic HTML fixtures and a fake `fetch`; no live AoC access until milestone 6. Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -35,8 +36,8 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 ### 2. Durable state and credit admission
 
-- [ ] Define event/puzzle/attempt identifiers, state transitions, and private artifact layout with a readable index.
-- [ ] Implement atomic persistence, structured events, recovery, and single-writer/concurrency coordination. (Done for the credit ledger; run/puzzle state store outstanding.)
+- [x] Define event/puzzle/attempt identifiers, state transitions, and private artifact layout with a readable index.
+- [x] Implement atomic persistence, structured events, recovery, and single-writer/concurrency coordination.
 - [x] Implement exact credit arithmetic, atomic multi-limit reservations, reconciliation, and conservative handling of uncertain calls.
 - [x] Test concurrent admissions, exhaustion, restart/crash cases, separate credit pools, and unaccounted-operation rejection.
 
@@ -112,3 +113,10 @@ Credit-ledger verification (2026-09-27):
 - Covered: exact boundaries on each of the four counters, per-puzzle vs event scope, shared and separate pools, 20 concurrent admissions against a 3-slot limit, invalid/zero/duplicate/unknown-scope rejection, restart with orphaned and uncertain holds, stale-lock refusal and dead-PID breaking, torn-tail recovery, corruption and config-mismatch refusal, persistent overrun blocking until acknowledged, injected fsync failure faulting the ledger while counting the reservation, private file modes, close draining queued work, abort-after-admission and transport-failure annotations.
 - Independent review (child Pi, read-only): addressed abort-after-reservation annotation (new optional `Reservation.abandon`, annotation only), full-line appends (`appendFile`), parent-directory fsync, and a close-draining test. The claim that close could race queued operations was checked and is not reachable (closure is checked synchronously before enqueuing); covered by a test. PID reuse can block `breakStaleLock` (refusal is intentional; manual removal after review is the override). Receipt uniqueness is not enforced (duplicate receipts over-count, which errs safe).
 - Fsync-failure behavior was tested by patching `FileHandle.prototype.sync`, not by real disk faults. No power-loss testing. No live provider or AoC activity.
+
+Run-state and artifact verification (2026-09-27):
+
+- Extracted the journal (lock, fsync-before-ack, torn-tail repair, sequence checks, fault latch) into `src/state/journal.ts`; the ledger now uses it (lock file renamed to `journal.lock`). All ledger tests still pass.
+- `npm run check` — lint, type checks, 77 offline tests, and build passed. New coverage: two-part lifecycle, forbidden transitions writing nothing, duplicate/bounded/cooldown-blocked submissions, cooldown-verdict resubmission after the embargo, crash during submission → `uncertain` and no retry, interrupted attempts, replay of an impossible journal and wrong event refused, layout paths, atomic view writes with private modes and Markdown escaping, lock-free status, CLI settle refused while the ledger is locked and requiring an `operator:` receipt.
+- Independent review (child Pi, read-only): `writeViews` now tolerates a missing `runs/` directory (not reachable via the current write order, but hardened); `boc status` now uses the unified summary renderer; D012 lock name corrected. Not changed: a directory fsync after torn-tail truncation (truncation is file metadata, covered by the file fsync); the `as never` cast in `RunStore.record` (records are schema-validated at runtime before append).
+- No live provider or AoC activity.

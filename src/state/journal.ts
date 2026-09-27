@@ -130,8 +130,29 @@ export class Journal<R extends JournalRecord> {
     return this.#faulted;
   }
 
+  /** The journal clock, so callers can validate a record at the time it will carry. */
+  now(): Date {
+    return this.#now();
+  }
+
   get empty(): boolean {
     return this.#seq === 0;
+  }
+
+  /**
+   * Read-only snapshot for status views while another process may own the journal.
+   * Takes no lock and never modifies files; an incomplete final line is ignored.
+   */
+  static async read<R extends JournalRecord>(
+    options: Pick<JournalOptions<R>, "directory" | "schema">,
+  ): Promise<R[]> {
+    let content = "";
+    try {
+      content = await readFile(join(options.directory, JOURNAL_FILE), "utf8");
+    } catch (error) {
+      if (!isNotFound(error)) throw new JournalError("corrupt", "Cannot read the journal.");
+    }
+    return parseRecords(content.slice(0, content.lastIndexOf("\n") + 1), options.schema);
   }
 
   async #load(): Promise<R[]> {
@@ -156,19 +177,8 @@ export class Journal<R extends JournalRecord> {
     }
     this.#handle = await open(path, "a", 0o600);
     await syncDirectory(this.#directory);
-    const records: R[] = [];
-    if (!content) return records;
-    for (const [index, line] of content.slice(0, -1).split("\n").entries()) {
-      let record: R;
-      try {
-        record = this.#schema.parse(JSON.parse(line));
-      } catch {
-        throw new JournalError("corrupt", "Journal is corrupt.");
-      }
-      if (record.seq !== index + 1) throw new JournalError("corrupt", "Journal is corrupt.");
-      records.push(record);
-      this.#seq = record.seq;
-    }
+    const records = parseRecords(content, this.#schema);
+    this.#seq = records.length;
     return records;
   }
 
@@ -184,10 +194,10 @@ export class Journal<R extends JournalRecord> {
   }
 
   /** Durably append. Call only from inside `run` (or during single-threaded setup). */
-  async append(body: Body<R>): Promise<R> {
+  async append(body: Body<R>, at: Date = this.#now()): Promise<R> {
     if (!this.#handle) throw new JournalError("closed", "Journal is closed.");
     if (this.#faulted) throw new JournalError("faulted", "Journal is faulted.");
-    const candidate = { seq: this.#seq + 1, at: this.#now().toISOString(), ...body };
+    const candidate = { seq: this.#seq + 1, at: at.toISOString(), ...body };
     // Validate what is written so that replay can never reject our own output.
     const parsed = this.#schema.safeParse(candidate);
     if (!parsed.success) throw new JournalError("invalid", "Invalid journal record.");
@@ -215,6 +225,22 @@ export class Journal<R extends JournalRecord> {
     this.#handle = undefined;
     await unlink(join(this.#directory, LOCK_FILE));
   }
+}
+
+function parseRecords<R extends JournalRecord>(content: string, schema: z.ZodType<R>): R[] {
+  const records: R[] = [];
+  if (!content) return records;
+  for (const [index, line] of content.slice(0, -1).split("\n").entries()) {
+    let record: R;
+    try {
+      record = schema.parse(JSON.parse(line));
+    } catch {
+      throw new JournalError("corrupt", "Journal is corrupt.");
+    }
+    if (record.seq !== index + 1) throw new JournalError("corrupt", "Journal is corrupt.");
+    records.push(record);
+  }
+  return records;
 }
 
 async function acquireLock(directory: string): Promise<void> {

@@ -44,8 +44,17 @@ Credit amounts are **JSON strings**, not numbers. Accepted syntax is a non-negat
 
 Duplicate IDs, duplicate credential paths (including normalized relative-path aliases), missing/incompatible pool references, and unused pools are rejected. Symlink aliases and multiple files representing the same billed principal still require account-aware validation before live use. Changing an ID or config file must not reset an existing ledger: the ledger refuses to open if its history references a subscription or pool that is missing, rebound to another pool, or has a different provider or unit. Changing `event.year` selects a different ledger directory. Lowering limits is allowed and applies to existing usage. Migration tooling does not exist yet.
 
-## Exit codes
+## Commands and exit codes
 
-- `0`: help displayed, or configuration structurally valid (live adapters may still be blocked).
-- `1`: configuration could not be read or validated.
+- `boc check-config <config>` — structural validation only.
+- `boc status <config>` — read-only run state and credits; takes no lock, safe while BoC runs.
+- `boc views <config>` — regenerate private Markdown summaries under `storageDir`.
+- `boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>` — record an authoritative charge for a held reservation (requires the ledger lock: stop BoC first).
+- `boc ledger acknowledge <config> <reservation-id> <note>` — acknowledge a reviewed overrun so admission can resume.
+- `boc ledger break-lock <config>` — remove a lock left by a dead process on this host.
+
+The private artifact layout is documented in `src/state/layout.ts` and D013.
+
+- `0`: success (for `check-config`, live adapters may still be blocked).
+- `1`: configuration could not be read or validated, or the command failed (for example, the ledger is locked).
 - `2`: unsupported command or arguments.

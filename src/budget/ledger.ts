@@ -191,6 +191,8 @@ export function ledgerDirectory(config: BocConfig): string {
 export class CreditLedger {
   readonly #config: BocConfig;
   readonly #session = randomUUID();
+  /** Session whose holds are "live"; for read-only inspection, the latest opener. */
+  #liveSession: string = this.#session;
   readonly #subscriptionLimits = new Map<string, Limits>();
   readonly #poolLimits = new Map<string, Limits>();
   readonly #spent = new Map<string, Credits>();
@@ -244,11 +246,32 @@ export class CreditLedger {
         });
       }
       await opened.journal.append({ type: "open", session: ledger.#session });
+      ledger.#liveSession = ledger.#session;
     } catch (error) {
       await opened.journal.close().catch(() => {});
       throw toLedgerError(error);
     }
     return ledger;
+  }
+
+  /**
+   * Read-only status without taking the lock (safe while BoC runs). Holds made by
+   * the most recent opener are reported as live, earlier ones as orphaned.
+   */
+  static async inspect(options: Omit<LedgerOptions, "now">): Promise<LedgerStatus> {
+    const ledger = new CreditLedger(options);
+    try {
+      const records = await Journal.read({ directory: options.directory, schema: recordSchema });
+      for (const [index, record] of records.entries()) {
+        if ((index === 0) !== (record.type === "create")) {
+          throw new LedgerError("corrupt", "Credit ledger journal is corrupt.");
+        }
+        ledger.#replay(record);
+      }
+    } catch (error) {
+      throw toLedgerError(error);
+    }
+    return ledger.status();
   }
 
   /** See `Journal.breakStaleLock`. */
@@ -269,6 +292,7 @@ export class CreditLedger {
         }
         return;
       case "open":
+        this.#liveSession = record.session;
         return;
       case "reserve": {
         if (this.#known.has(record.id)) throw corrupt();
@@ -490,7 +514,7 @@ export class CreditLedger {
         pool: held.pool,
         puzzle: held.puzzle,
         amount: held.amount,
-        orphaned: held.session !== this.#session,
+        orphaned: held.session !== this.#liveSession,
         uncertain: held.uncertain,
       })),
       counters,

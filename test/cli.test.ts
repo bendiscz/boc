@@ -77,3 +77,60 @@ test("entry point runs without SDK discovery or credentials", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /offline foundation/);
 });
+
+test("status is lock-free; ledger commands require exclusive access", async (t) => {
+  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { CreditLedger } = await import("../src/budget/ledger.ts");
+  const { loadConfig } = await import("../src/config.ts");
+  const { parseCredits } = await import("../src/budget/credits.ts");
+  const { puzzleId } = await import("../src/state/ids.ts");
+  const dir = await mkdtemp(join(tmpdir(), "boc-cli-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const example = JSON.parse(
+    await readFile(new URL("../examples/boc.config.json", import.meta.url), "utf8"),
+  );
+  const configPath = join(dir, "boc.config.json");
+  await writeFile(configPath, JSON.stringify({ ...example, storageDir: "var" }));
+  const config = await loadConfig(configPath);
+
+  let output = capture();
+  assert.equal(await runCli(["status", configPath], output), 0, output.stderr.join());
+  assert.match(output.stdout.join("\n"), /No puzzles recorded yet/);
+
+  const ledger = await CreditLedger.open({ directory: join(dir, "var/ledger/2026"), config });
+  await ledger.reserve({
+    id: "held-1",
+    subscription: "copilot-work",
+    puzzle: puzzleId(1),
+    amount: parseCredits("5"),
+    operation: "test",
+  });
+  output = capture();
+  assert.equal(await runCli(["status", configPath], output), 0);
+  assert.match(output.stdout.join("\n"), /held-1: 5 on copilot-work\/copilot-pool, day-01$/m);
+  output = capture();
+  const settle = ["ledger", "settle", configPath, "held-1", "2", "operator:invoice-7"];
+  assert.equal(await runCli(settle, output), 1);
+  assert.match(output.stderr.join(), /locked/i);
+  await ledger.close();
+
+  output = capture();
+  assert.equal(
+    await runCli(["ledger", "settle", configPath, "held-1", "2", "no-prefix"], output),
+    2,
+  );
+  output = capture();
+  assert.equal(await runCli(settle, output), 0, output.stderr.join());
+  output = capture();
+  assert.equal(await runCli(settle, output), 1, "already settled");
+  assert.match(output.stderr.join(), /Invalid settlement/);
+
+  output = capture();
+  assert.equal(await runCli(["views", configPath], output), 0, output.stderr.join());
+  assert.match(await readFile(join(dir, "var/runs/2026/SUMMARY.md"), "utf8"), /\| 2 \| 0 \| 98 \|/);
+  assert.match(await readFile(join(dir, "var/INDEX.md"), "utf8"), /2026/);
+  output = capture();
+  assert.equal(await runCli(["ledger", "break-lock", configPath], output), 0);
+});

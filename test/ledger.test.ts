@@ -343,3 +343,21 @@ test("close drains operations queued before it and rejects later ones", async (t
   const reopened = await openLedger(t, dir);
   assert.equal(counterOf(reopened, "pool", "copilot-pool", day1).reserved, c("3"));
 });
+
+test("read-only inspection needs no lock, modifies nothing, and ignores a torn tail", async (t) => {
+  const dir = await directory(t);
+  const ledger = await openLedger(t, dir);
+  await reserve(ledger, "2");
+  const journal = join(dir, "journal.jsonl");
+  const inspected = await CreditLedger.inspect({ directory: dir, config: config({}) });
+  assert.equal(inspected.held.length, 1);
+  assert.equal(inspected.held[0]?.orphaned, false, "the running owner's hold is live");
+  await ledger.close();
+  const intact = await readFile(journal, "utf8");
+  await writeFile(journal, `${intact}{"seq":`);
+  const again = await CreditLedger.inspect({ directory: dir, config: config({}) });
+  assert.equal(again.held.length, 1);
+  assert.equal(await readFile(journal, "utf8"), `${intact}{"seq":`);
+  const missing = await CreditLedger.inspect({ directory: join(dir, "none"), config: config({}) });
+  assert.deepEqual(missing.held, []);
+});
