@@ -11,6 +11,7 @@
   - Ctrl-C stops gracefully (exit code 130) and the run can be resumed.
 - Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
 - Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
+- GitHub Copilot adapter (`src/providers/github-copilot.ts`): credential file only, token refresh, output cap, and charges derived from usage. Plus `boc login`, calibration-only registration (`run --calibrate`), and `boc calibration-report` (D018). Not yet used live.
 - Best-effort credit limits (D016):
   - estimated, padded reservations from per-subscription rates;
   - charge source labels (provider, derived, estimated, operator);
@@ -35,27 +36,22 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: the GitHub Copilot adapter (D016, D017; the operator chose Copilot first).
+Next concrete task: **the calibration run with the operator** (OPERATOR.md "Calibration run"; FEASIBILITY.md "Calibration protocol").
 
-1. Read the installed pi-ai GitHub Copilot provider and auth code: `node_modules/@earendil-works/pi-ai/dist/providers/github-copilot*`, `dist/auth`, and the relevant `dist/api/*`. Establish:
-   - how OAuth device login and token refresh work, and how to keep the tokens in the subscription's `credentialFile` (`0600`, BoC-owned, never ambient);
-   - which API each Copilot model uses;
-   - whether `maxTokens` is honoured;
-   - which retries or fallbacks happen inside a stream call.
+The Copilot adapter, `boc login`, `run --calibrate`, and `calibration-report` are implemented and tested offline. The operator needs to:
 
-   Record the findings in FEASIBILITY.md.
-2. Implement `src/providers/github-copilot.ts`, a `ProviderAdapter` factory. It should:
-   - load credentials only from the configured file;
-   - build the provider's `ProviderStreams` without the ambient registry;
-   - pass an explicit output cap;
-   - use `createEstimatingMeter` (with a provider charge hook if Copilot exposes per-call credits);
-   - set `minimumAttemptCredits`.
+- set up a past-event config with a small allowance, official rates, and ideally a GitHub budget;
+- run `boc login`;
+- run a supervised `run --calibrate --days …` with `NODE_EXTRA_CA_CERTS` on this host;
+- share the calibration report and GitHub's usage figures.
 
-   Test it offline with fake HTTP. It is not registered in `PRODUCTION_ADAPTERS` until after calibration.
-3. Add a `boc login <config> <subscription>` command for the minimal interactive OAuth device flow. It writes only the credential file and never prints tokens.
-4. Then ask the operator for the calibration run (FEASIBILITY.md "Calibration protocol") with a small allocation, current official Copilot per-token rates in the subscription's `estimate`, and ideally a provider-side budget.
+Then:
 
-Do not begin live calls before the adapter is implemented and the operator has approved and set up the calibration run. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
+1. Evaluate the calibration against the D016 criteria, record it in FEASIBILITY.md, and fix any defects found. The first live requests will probably reveal protocol details, such as headers and usage fields.
+2. If it passes, promote the adapter to `PRODUCTION_ADAPTERS`.
+3. Next adapter: Anthropic (D017).
+
+Do not make live calls except in the supervised calibration run the operator sets up. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -261,3 +257,22 @@ Best-effort limits verification (2026-09-27):
   - the provider-cap warning.
 
   Existing guard, ledger, and selection tests were updated to the new semantics.
+
+Copilot adapter verification (2026-09-27):
+
+- Read pi-ai 0.87.1's Copilot provider, its OAuth flow, and the three APIs it uses. The findings are in FEASIBILITY.md. Fetched the official GitHub Copilot models-and-pricing page (1 credit = $0.01; the rate conversion is recorded).
+- `npm run check`: 134 offline tests passed. New coverage:
+  - the adapter uses only the credential file, the token-derived endpoint, the enforced output cap, and `maxRetries` 0;
+  - a single refresh is shared by concurrent requests and persisted `0600`, and refresh failures are sanitized with no token in the error;
+  - unsafe files, a malformed credential, an unavailable model, a missing estimate, and an unknown model are refused;
+  - the real Pi Copilot catalog is used with no network access at construction;
+  - login writes only the credential file and never prints tokens;
+  - the calibration report aggregates calls by charge source;
+  - CLI checks for calibration mode and the login terminal requirement.
+- No live Copilot or AoC request has been made.
+- Independent review (child Pi, read-only), all addressed:
+  - Login errors were hidden as "Command failed." They are now typed, with the provider reason bounded and token-like strings redacted.
+  - A credential renewed on disk was ignored by a running adapter. It is now re-read before refreshing.
+  - The calibration report did not show uncertain holds; it now counts them.
+- The review also confirmed that the explicit `apiKey` prevents pi-ai's `COPILOT_GITHUB_TOKEN` environment fallback, and that adapter construction makes no network request.
+- `npm run check`: 136 offline tests passed.

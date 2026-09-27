@@ -95,3 +95,18 @@ npm run test:sandbox -- "$(docker image inspect node:24-trixie-slim --format '{{
 ```
 
 Passed locally with Docker Engine 29.8.0 and the existing Node image: UID 65534, no external interface, no inherited synthetic canary, no Docker socket, read-only root, zero effective capabilities, no-new-privileges, and writable scratch. The read-only-root check inspects `/proc/self/mountinfo`, not merely non-root write denial; a negative-control run with `--read-only` removed correctly failed. It did **not** validate all toolchains, dependency acquisition, artifact transfer, production container cleanup, or kernel-escape resistance. The probe is opt-in and not part of the default test suite/CI; the production executor is still to be implemented.
+
+## GitHub Copilot adapter findings (2026-09-27, pi-ai 0.87.1)
+
+The adapter is implemented (`src/providers/github-copilot.ts`) and tested offline with a fake provider. It has **not** made a live request yet.
+
+- **Auth.** Pi's Copilot OAuth uses the GitHub device flow: the GitHub access token (`refresh`) is exchanged for a short-lived Copilot token (`access`, with `expires`). The API base URL comes from the token's `proxy-ep`, for example `api.business.githubcopilot.com` for organization seats.
+  - `boc login <config> <subscription>` runs this flow and writes the credential only to the subscription's `credentialFile` (`0600`). The adapter refreshes the token when it is within 2 minutes of expiry and persists the rotated token atomically.
+  - Pi's login also enables account models whose policy is "unconfigured", as VS Code does. Models disabled by policy stay disabled.
+  - The flow identifies itself with Copilot/VS Code client headers taken from Pi's model catalog.
+- **APIs and caps.** Copilot models use `anthropic-messages`, `openai-completions`, or `openai-responses`. All three create SDK clients with `maxRetries: 0`, retry only through `options.maxRetries` (the guard forces 0), and send the output cap (`max_tokens`, `max_completion_tokens`, or `max_output_tokens`) when `maxTokens` is set. The guard applies `outputCap` (`assumedMaxOutputTokens`, bounded by the model maximum), so the adapter uses `enforcesMaxTokens: true`.
+- **Charges.** No per-call AI-credit figure is exposed on this path. Charges are `derived` from reported token usage at the configured rates, or `estimated` when usage is missing or the response was cut off.
+- **Official rates.** [Models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing), fetched 2026-09-27: 1 AI credit = $0.01, prices per 1M tokens. Configured `estimate.rates` are **credits per 1M tokens = USD × 100**. For example, Claude Sonnet 4.6 gives input 300, cacheRead 30, cacheWrite 375, output 1500. GPT-5.4 mini gives input 75, cacheRead 7.5, cacheWrite 0, output 450. Some models have higher long-context tiers above 200K–272K input tokens; BoC's contexts stay far below those thresholds, but configure the higher tier if in doubt.
+- **Included allowances.** Copilot Business and Enterprise include per-user AI-credit allowances pooled at the billing entity. BoC counts all usage against its own limits whether or not it falls within the included allowance.
+- **TLS.** On a host behind a TLS-intercepting proxy, run BoC with `NODE_EXTRA_CA_CERTS=<ca-bundle>` so that `github.com` and `*.githubcopilot.com` validate.
+- **Status.** Registered in `CALIBRATION_ADAPTERS` only. It is usable through `boc run --calibrate --days …` for already released days, and is not in `PRODUCTION_ADAPTERS` until a passing calibration is recorded here.

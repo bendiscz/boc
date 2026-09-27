@@ -147,6 +147,23 @@ export interface LedgerStatus {
   readonly counters: readonly CounterStatus[];
 }
 
+export interface SubscriptionReport {
+  readonly subscription: string;
+  readonly calls: number;
+  readonly settled: number;
+  readonly held: number;
+  /** Held reservations annotated as uncertain (unknown outcome; reconcile first). */
+  readonly uncertain: number;
+  /** Sum of reserved estimates for settled calls. */
+  readonly estimated: Credits;
+  readonly charged: Credits;
+  readonly bySource: Readonly<Partial<Record<ChargeSource, Credits>>>;
+  /** Largest actual/estimate ratio among settled calls. */
+  readonly maxRatio: number | undefined;
+}
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
 export interface ReserveInput {
   readonly id: string;
   readonly subscription: string;
@@ -295,6 +312,80 @@ export class CreditLedger {
       throw toLedgerError(error);
     }
     return ledger.status();
+  }
+
+  /**
+   * Read-only calibration summary per subscription (D016): how estimates compare
+   * with recorded charges, by charge source. For comparison with provider billing.
+   */
+  static async report(options: Omit<LedgerOptions, "now">): Promise<SubscriptionReport[]> {
+    const records = await Journal.read({
+      directory: options.directory,
+      schema: recordSchema,
+    }).catch((error: unknown) => {
+      throw toLedgerError(error);
+    });
+    const reserves = new Map<
+      string,
+      { subscription: string; amount: Credits; uncertain: boolean }
+    >();
+    const reports = new Map<string, Mutable<SubscriptionReport>>();
+    const entry = (subscription: string) => {
+      let report = reports.get(subscription);
+      if (!report) {
+        report = {
+          subscription,
+          calls: 0,
+          settled: 0,
+          held: 0,
+          uncertain: 0,
+          estimated: ZERO_CREDITS,
+          charged: ZERO_CREDITS,
+          bySource: {},
+          maxRatio: undefined,
+        };
+        reports.set(subscription, report);
+      }
+      return report;
+    };
+    for (const record of records) {
+      if (record.type === "reserve") {
+        reserves.set(record.id, {
+          subscription: record.subscription,
+          amount: parseCredits(record.amount),
+          uncertain: false,
+        });
+        const report = entry(record.subscription);
+        report.calls++;
+        report.held++;
+      } else if (record.type === "uncertain") {
+        const reserve = reserves.get(record.id);
+        if (reserve && !reserve.uncertain) {
+          reserve.uncertain = true;
+          entry(reserve.subscription).uncertain++;
+        }
+      } else if (record.type === "settle") {
+        const reserve = reserves.get(record.id);
+        if (!reserve) continue;
+        const report = entry(reserve.subscription);
+        if (reserve.uncertain) report.uncertain--;
+        const actual = parseCredits(record.actual);
+        const source = record.source ?? "provider";
+        report.settled++;
+        report.held--;
+        report.estimated = addCredits(report.estimated, reserve.amount);
+        report.charged = addCredits(report.charged, actual);
+        report.bySource = {
+          ...report.bySource,
+          [source]: addCredits(report.bySource[source] ?? ZERO_CREDITS, actual),
+        };
+        // Ratio actual/estimate in millionths, for "no call above its estimate × safety".
+        const ratio =
+          reserve.amount > 0n ? Number((actual * 1_000_000n) / reserve.amount) / 1e6 : 0;
+        if (report.maxRatio === undefined || ratio > report.maxRatio) report.maxRatio = ratio;
+      }
+    }
+    return [...reports.values()].sort((a, b) => a.subscription.localeCompare(b.subscription));
   }
 
   /** See `Journal.breakStaleLock`. */

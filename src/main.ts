@@ -16,5 +16,21 @@ process.exitCode = await runCli(
     out: (message) => console.log(message),
     err: (message) => console.error(message),
   },
-  { signal: controller.signal, ...(process.stdout.isTTY ? { terminal: process.stdout } : {}) },
+  {
+    signal: controller.signal,
+    ...(process.stdout.isTTY ? { terminal: process.stdout } : {}),
+    ...(process.stdin.isTTY
+      ? {
+          ask: async (question: string) => {
+            const { createInterface } = await import("node:readline/promises");
+            const rl = createInterface({ input: process.stdin, output: process.stdout });
+            try {
+              return await rl.question(question);
+            } finally {
+              rl.close();
+            }
+          },
+        }
+      : {}),
+  },
 );

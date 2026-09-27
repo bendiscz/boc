@@ -117,3 +117,7 @@ What changes:
 ## D017 — Anthropic as a third provider
 
 On 2026-09-27 the operator added Anthropic as a supported LLM provider (`provider: "anthropic"`). The native unit is the operator's billing unit, typically USD for the API. Pi 0.87.1 ships an Anthropic provider. Its details are verified when its adapter is built, and it follows D016 like the others. Unverified expectations to check then: whether the Messages API enforces `max_tokens`, and whether responses report input, output, and cache token usage. If both hold, estimates from published per-token prices can be accurate. Anthropic comes after GitHub Copilot.
+
+## D018 — Calibration-only adapters and interactive login
+
+Implemented adapters start in `CALIBRATION_ADAPTERS` (`src/providers/adapter.ts`) and can run only through `boc run --calibrate --days …`, for already released days (past puzzles) under operator supervision. `boc calibration-report` summarizes, per subscription, the calls made, estimated versus charged credits by source, held reservations, and the largest actual/estimate ratio, for comparison with the provider's billing. An adapter moves to `PRODUCTION_ADAPTERS` only after FEASIBILITY.md records a passing calibration. `boc login <config> <subscription>` performs the provider's interactive authorization and writes only that subscription's credential file; tokens are never printed or passed as arguments.

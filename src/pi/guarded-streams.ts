@@ -57,6 +57,11 @@ interface GuardedStreamsOptions {
   transport: ProviderStreams;
   /** Notified once when an uncertain outcome permanently faults this guard. */
   onFault?: () => void;
+  /**
+   * Output-token cap applied to every request (min of any requested value and this),
+   * so admission estimates and the provider see the same enforced limit.
+   */
+  outputCap?: number;
 }
 
 /**
@@ -96,6 +101,12 @@ function sanitizeOptions(input: RequestOptions | undefined): RequestOptions {
     if (options[key] !== undefined) Object.assign(result, { [key]: structuredClone(options[key]) });
   }
   return result;
+}
+
+function capOutput(options: RequestOptions, cap: number | undefined): RequestOptions {
+  if (cap === undefined) return options;
+  if (!Number.isInteger(cap) || cap < 1) throw new Error("Invalid output cap.");
+  return { ...options, maxTokens: Math.min(options.maxTokens ?? cap, cap) };
 }
 
 function deepFreeze<T>(value: T): T {
@@ -146,7 +157,7 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
       snapshot = deepFreeze({
         model: structuredClone(canonical),
         context: structuredClone(context),
-        options: sanitizeOptions(incomingOptions),
+        options: capOutput(sanitizeOptions(incomingOptions), config.outputCap),
       });
     } catch {
       setupError = true;

@@ -82,6 +82,20 @@ Stop BoC before any command that changes state. They all take the same locks.
 | Expired AoC session | Replace the cookie file content, then run again. |
 | Corrupt journal | BoC refuses to open it. Keep a copy, and do not delete or edit it without understanding the damage: the journals are the record of credits spent and answers submitted. |
 
+## Calibration run (GitHub Copilot)
+
+1. Create a GitHub budget for your Copilot usage, with usage stopping enabled, sized to the calibration allowance. Set `providerCap: "configured"` on the pool.
+2. In the configuration:
+   - set the subscription's `model` to an ID enabled for your account, for example `claude-sonnet-4.6`;
+   - set its `credentialFile` to a path in `.secrets/`;
+   - set `estimate.rates` from the [official price list](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing), as credits per 1M tokens = USD × 100;
+   - use small limits, for example event 200 and per puzzle 50 credits.
+3. Authorize the subscription once: `node dist/main.js login boc.config.json <subscription>`. When asked for a GitHub Enterprise domain, leave it blank for github.com, or enter it for GHE.com data residency. Open the printed URL and enter the code.
+4. Behind a TLS-intercepting proxy, prefix the following commands with `NODE_EXTRA_CA_CERTS=/path/to/ca.pem`.
+5. Run a few past days: `node dist/main.js run boc.config.json --calibrate --days 1,2 --tui` (the config's `event.year` must be a past event).
+6. Run `node dist/main.js calibration-report boc.config.json`, and compare the charged total with GitHub's usage report for the same time window.
+7. Send the report and the GitHub figures to the developer, who records the result in FEASIBILITY.md.
+
 ## Before each event
 
 - Recheck the AoC About/FAQ and automation guidance ([AOC.md](AOC.md)), provider policies, and credit semantics ([FEASIBILITY.md](FEASIBILITY.md)).

@@ -23,7 +23,7 @@ function capture() {
 test("help works offline and explicitly reports the disabled live functionality", async () => {
   const output = capture();
   assert.equal(await runCli([], output), 0);
-  assert.match(output.stdout.join("\n"), /always refuses to start/);
+  assert.match(output.stdout.join("\n"), /refuses to start unless --calibrate/);
   assert.deepEqual(output.stderr, []);
 });
 
@@ -235,4 +235,19 @@ test("the submission override command requires exact arguments and the store loc
   assert.equal(await runCli(args, output), 1, "no longer overridable");
   const reopened = await RunStore.inspect({ directory: runs, eventYear: 2026 });
   assert.equal(reopened.puzzles["day-01"]?.parts[1].status, "ready");
+});
+
+test("calibration runs need explicit released days and an interactive login needs a terminal", async () => {
+  const example = fileURLToPath(new URL("../examples/boc.config.json", import.meta.url));
+  let output = capture();
+  assert.equal(await runCli(["run", example, "--calibrate"], output), 2);
+  output = capture();
+  assert.equal(await runCli(["run", example, "--calibrate", "--days", "1"], output), 1);
+  assert.match(output.stderr.join(), /limited to already released days/);
+  output = capture();
+  assert.equal(await runCli(["login", example, "copilot-work"], output), 1);
+  assert.match(output.stderr.join(), /interactive terminal/);
+  output = capture();
+  assert.equal(await runCli(["calibration-report", example], output), 0);
+  assert.match(output.stdout.join(), /No model calls recorded/);
 });

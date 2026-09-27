@@ -2,6 +2,7 @@ import type { Api, Model, ProviderStreams } from "@earendil-works/pi-ai";
 import type { CreditMeter } from "../budget/admission.ts";
 import type { Credits } from "../budget/credits.ts";
 import type { BocConfig } from "../config.ts";
+import { createCopilotAdapter } from "./github-copilot.ts";
 
 type Subscription = BocConfig["subscriptions"][number];
 
@@ -17,13 +18,24 @@ export interface ProviderAdapter {
   readonly meter: CreditMeter;
   /** Smallest useful headroom to start an attempt, in the pool's native unit. */
   readonly minimumAttemptCredits: Credits;
+  /** Output-token cap enforced on every request (the meter's estimates assume it). */
+  readonly outputCap?: number;
 }
 
 export type AdapterFactory = (subscription: Subscription) => Promise<ProviderAdapter | undefined>;
 
 /**
- * Production registry. Deliberately empty: no provider has passed its gate, and
- * there is no configuration switch to add one. Tests inject fake factories.
+ * Adapters implemented but not yet calibrated (D016). Usable only through
+ * `boc run --calibrate --days …` (supervised past-puzzle runs); promoted to
+ * PRODUCTION_ADAPTERS once FEASIBILITY.md records a passing calibration.
+ */
+export const CALIBRATION_ADAPTERS: Readonly<
+  Partial<Record<Subscription["provider"], AdapterFactory>>
+> = Object.freeze({ "github-copilot": (subscription) => createCopilotAdapter(subscription) });
+
+/**
+ * Production registry. Empty until an adapter passes calibration; there is no
+ * configuration switch to add one. Tests inject fake factories.
  */
 export const PRODUCTION_ADAPTERS: Readonly<
   Partial<Record<Subscription["provider"], AdapterFactory>>

@@ -48,6 +48,8 @@ export interface RunOptions {
   readonly onProgress?: (progress: Progress) => void;
   readonly maxAttemptsPerPart?: number;
   readonly maxTurnsPerAttempt?: number;
+  /** Calibration runs: refuse any day that is not already released (never wait). */
+  readonly pastOnly?: boolean;
 }
 
 export interface Progress {
@@ -69,6 +71,10 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
   const sleep = options.sleep ?? abortableSleep;
   const year = config.event.year;
 
+  const days = options.days ? [...options.days] : undefined;
+  if (options.pastOnly && (!days || days.some((day) => !isReleased(year, day, now())))) {
+    throw new AppError("Calibration runs are limited to already released days.");
+  }
   // Preflight, fail closed: providers first, before any AoC or ledger access.
   const factories = options.adapters ?? PRODUCTION_ADAPTERS;
   const adapters = new Map<string, ProviderAdapter>();
@@ -101,7 +107,6 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
   if (!options.executor && !config.sandbox) {
     throw new AppError("Configure sandbox.image (see docs/SANDBOX.md).");
   }
-  const days = options.days ? [...options.days] : undefined;
   if (days && days.length === 0) throw new AppError("No days selected.");
   if (days?.some((day) => !Number.isInteger(day) || day < 1 || day > 31)) {
     throw new AppError("Days must be from 1 to 31.");
@@ -187,6 +192,7 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
               subscription: chosen,
               model: adapter.model,
               transport: adapter.transport,
+              ...(adapter.outputCap ? { outputCap: adapter.outputCap } : {}),
               admission: createLedgerAdmission({
                 ledger,
                 subscription: chosen,

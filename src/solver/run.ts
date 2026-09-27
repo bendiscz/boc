@@ -30,6 +30,7 @@ export interface SolverBinding {
   readonly admission: Admission;
   /** Trusted provider transport; wrapped in the guard for every attempt. */
   readonly transport: ProviderStreams;
+  readonly outputCap?: number;
 }
 
 export interface SolveOptions {
@@ -182,6 +183,7 @@ async function runAttempt(
     model: binding.model,
     admission,
     transport: binding.transport,
+    ...(binding.outputCap ? { outputCap: binding.outputCap } : {}),
     onFault: () => {
       faulted = true;
     },

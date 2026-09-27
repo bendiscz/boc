@@ -1,8 +1,11 @@
 import { AocError } from "./aoc/client.ts";
 import { AppError, type Progress, runEvent } from "./app.ts";
-import { parseCredits } from "./budget/credits.ts";
+import { formatCredits, parseCredits } from "./budget/credits.ts";
 import { CreditLedger, LedgerError } from "./budget/ledger.ts";
 import { type BocConfig, ConfigError, loadConfig } from "./config.ts";
+import { CALIBRATION_ADAPTERS } from "./providers/adapter.ts";
+import { AdapterError } from "./providers/github-copilot.ts";
+import { loginSubscription } from "./providers/login.ts";
 import { providerReadiness } from "./providers/readiness.ts";
 import { puzzleId } from "./state/ids.ts";
 import { JournalError } from "./state/journal.ts";
@@ -10,6 +13,7 @@ import { layout } from "./state/layout.ts";
 import { RunStore, StateError } from "./state/run-state.ts";
 import { renderEventSummary, writeViews } from "./state/summary.ts";
 import { createTerminalView } from "./ui/dashboard.ts";
+import { PrivateFileError } from "./util/private-file.ts";
 
 interface Output {
   out(message: string): void;
@@ -20,9 +24,14 @@ const HELP = `Bot of Code — offline foundation
 
 Usage:
   boc check-config <config>        Validate configuration without reading credentials
-  boc run <config> [--days 1,2,5] [--tui]
+  boc login <config> <subscription>
+                                   Authorize a subscription (GitHub Copilot device flow);
+                                   writes only its credential file, never prints tokens
+  boc calibration-report <config>  Compare estimates with recorded charges per subscription
+  boc run <config> [--days 1,2,5] [--tui] [--calibrate]
                                    Solve puzzles (past days or waiting for releases);
-                                   refuses to start without an eligible provider adapter
+                                   refuses to start without an eligible provider adapter;
+                                   --calibrate (requires --days) uses uncalibrated adapters
   boc status <config>              Show run state and credits (read-only, lock-free)
   boc views <config>               Regenerate private Markdown summaries from journals
   boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>
@@ -35,7 +44,7 @@ Usage:
   boc --help                       Show this help
 
 Ledger and submission commands need exclusive access: stop BoC first.
-No provider adapter is eligible yet, so \`boc run\` currently always refuses to start.`;
+No adapter is calibrated yet: \`boc run\` refuses to start unless --calibrate is given.`;
 
 class UsageError extends Error {}
 
@@ -108,10 +117,13 @@ async function run(
 ): Promise<void> {
   let days: number[] | undefined;
   let tui = false;
+  let calibrate = false;
   for (let i = 0; i < flags.length; i++) {
     const flag = flags[i];
     if (flag === "--tui" && !tui) {
       tui = true;
+    } else if (flag === "--calibrate" && !calibrate) {
+      calibrate = true;
     } else if (
       flag === "--days" &&
       !days &&
@@ -123,6 +135,8 @@ async function run(
       throw new UsageError();
     }
   }
+  // Calibration uses implemented-but-uncalibrated adapters, only for explicit past days.
+  if (calibrate && !days) throw new UsageError();
   const view = tui && runtime.terminal ? createTerminalView(runtime.terminal) : undefined;
   const events: string[] = [];
   try {
@@ -130,6 +144,7 @@ async function run(
       config,
       version: VERSION,
       ...(days ? { days } : {}),
+      ...(calibrate ? { adapters: CALIBRATION_ADAPTERS, pastOnly: true } : {}),
       ...(runtime.signal ? { signal: runtime.signal } : {}),
       onEvent: (message) => {
         if (!view) {
@@ -186,10 +201,43 @@ async function submissionCommand(args: string[], config: BocConfig, output: Outp
   );
 }
 
+async function calibrationReport(config: BocConfig, output: Output): Promise<void> {
+  const paths = layout(config.storageDir, config.event.year);
+  const reports = await CreditLedger.report({ directory: paths.ledger, config });
+  if (reports.length === 0) output.out("No model calls recorded.");
+  for (const r of reports) {
+    const unit =
+      config.creditPools.find(
+        (p) => p.id === config.subscriptions.find((s) => s.id === r.subscription)?.creditPool,
+      )?.unit ?? "?";
+    const sources = Object.entries(r.bySource)
+      .map(([source, amount]) => `${source} ${formatCredits(amount as never)}`)
+      .join(", ");
+    output.out(
+      `${r.subscription} [${unit}]: ${r.calls} calls (${r.settled} settled, ${r.held} held, ${r.uncertain} uncertain); estimated ${formatCredits(r.estimated)}, charged ${formatCredits(r.charged)} (${sources || "-"}); max actual/estimate ${r.maxRatio?.toFixed(3) ?? "-"}`,
+    );
+  }
+  output.out(
+    "Compare the charged totals with the provider's billing for the same period (FEASIBILITY.md, calibration protocol).",
+  );
+}
+
+async function login(config: BocConfig, subscription: string, output: Output, runtime: Runtime) {
+  if (!runtime.ask) throw new AppError("Login needs an interactive terminal.");
+  const ask = runtime.ask;
+  await loginSubscription(config, subscription, {
+    ask,
+    say: (message) => output.out(message),
+    signal: runtime.signal ?? new AbortController().signal,
+  });
+}
+
 interface Runtime {
   readonly signal?: AbortSignal;
   /** Interactive terminal for `--tui`; absent when not a TTY. */
   readonly terminal?: NodeJS.WriteStream;
+  /** Line input for interactive login; absent when stdin is not a TTY. */
+  readonly ask?: (question: string) => Promise<string>;
 }
 
 export async function runCli(
@@ -205,12 +253,22 @@ export async function runCli(
   const configIndex = command === "ledger" || command === "submission" ? 1 : 0;
   const isRun = command === "run";
   const configPath = rest[configIndex];
-  const known = ["check-config", "status", "views", "ledger", "run", "submission"];
+  const known = [
+    "check-config",
+    "status",
+    "views",
+    "ledger",
+    "run",
+    "submission",
+    "login",
+    "calibration-report",
+  ];
   if (!command || !known.includes(command) || !configPath) {
     output.err("Invalid command. Run boc --help.");
     return 2;
   }
-  if (command !== "ledger" && command !== "submission" && !isRun && rest.length !== 1) {
+  const exactArgs = command === "login" ? 2 : 1;
+  if (command !== "ledger" && command !== "submission" && !isRun && rest.length !== exactArgs) {
     output.err("Invalid command. Run boc --help.");
     return 2;
   }
@@ -226,6 +284,8 @@ export async function runCli(
     else if (command === "status") await status(config, output);
     else if (command === "views") await views(config, output);
     else if (isRun) await run(config, rest.slice(1), output, runtime);
+    else if (command === "login") await login(config, rest[1] ?? "", output, runtime);
+    else if (command === "calibration-report") await calibrationReport(config, output);
     else if (command === "submission") {
       await submissionCommand([rest[0] ?? "", ...rest.slice(2)], config, output);
     } else await ledgerCommand([rest[0] ?? "", ...rest.slice(2)], config, output);
@@ -245,7 +305,9 @@ export async function runCli(
       error instanceof JournalError ||
       error instanceof StateError ||
       error instanceof AppError ||
-      error instanceof AocError;
+      error instanceof AocError ||
+      error instanceof AdapterError ||
+      error instanceof PrivateFileError;
     output.err(safe ? error.message : "Command failed.");
     return 1;
   }

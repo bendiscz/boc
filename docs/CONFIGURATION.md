@@ -70,7 +70,9 @@ Duplicate IDs, duplicate credential paths (including normalized relative-path al
 ## Commands and exit codes
 
 - `boc check-config <config>` — structural validation only.
-- `boc run <config> [--days 1,2,5] [--tui]` — solve past days or wait for releases. It refuses to start without an eligible provider adapter; today there is none. Ctrl-C stops gracefully with exit code `130`, and rerunning resumes. `--tui` shows a live dashboard when stdout is a terminal; otherwise output is timestamped lines. Every event is also appended to the private `runs/<year>/events.log`.
+- `boc login <config> <subscription>` — interactive provider authorization (GitHub Copilot device flow). It writes only that subscription's `credentialFile` (`0600`) and never prints tokens.
+- `boc calibration-report <config>` — per-subscription estimated versus charged credits by source, for comparison with the provider's billing.
+- `boc run <config> [--days 1,2,5] [--tui] [--calibrate]` — `--calibrate` (requires `--days` with already released days) uses implemented but not yet calibrated adapters; solve past days or wait for releases. It refuses to start without an eligible provider adapter; today there is none. Ctrl-C stops gracefully with exit code `130`, and rerunning resumes. `--tui` shows a live dashboard when stdout is a terminal; otherwise output is timestamped lines. Every event is also appended to the private `runs/<year>/events.log`.
 - `boc status <config>` — read-only run state and credits; takes no lock, safe while BoC runs.
 - `boc views <config>` — regenerate private Markdown summaries under `storageDir`.
 - `boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>` — record an authoritative charge for a held reservation (requires the ledger lock: stop BoC first).
