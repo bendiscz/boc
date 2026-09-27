@@ -33,6 +33,7 @@ node dist/main.js run examples/boc.config.json      # refuses: no eligible provi
 
 Configuration checking reads no credentials and makes no network requests. Example budgets and model IDs are placeholders, not verified provider allocations.
 
+- [Operator guide](docs/OPERATOR.md)
 - [Configuration reference](docs/CONFIGURATION.md)
 - [Provider, Pi, and isolation feasibility findings](docs/FEASIBILITY.md)
 - [AoC access and site conduct](docs/AOC.md)

@@ -27,16 +27,16 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: the remaining offline work, while milestone 6 is blocked on the provider credit gates.
+Next concrete task: **operator decision needed on provider eligibility** (milestone 6 is blocked). All offline milestones through the offline parts of 7 are implemented. The remaining work needs an eligible provider adapter. It must supply a certified per-call credit upper bound, authoritative receipts, and a transport without hidden retries (`src/providers/adapter.ts`, FEASIBILITY.md). Ask the operator whether to:
 
-1. Write `docs/OPERATOR.md`. It should cover prerequisites (Node 24, Docker, image build with the optional CA secret), private directories and permissions, the cookie file and `aoc.contact`, budget configuration, running (`run`, `--days`, `--tui`, Ctrl-C and resume), monitoring (`status`, `views`, `events.log`, transcripts), and recovery (stale locks, held reservations, `ledger settle`/`acknowledge`, uncertain submissions, `submission not-judged`).
-2. Add offline drill tests for milestone 7:
-   - a process kill mid-attempt and mid-submission, simulated by discarding instances without `close()`;
-   - an AoC outage (network errors on fetch and submit);
-   - an expired session (auth errors);
-   - quota exhaustion across two subscriptions.
-   Assert that the journals stay consistent and nothing is duplicated.
-3. Then ask the operator how to proceed on provider eligibility. The Copilot and Codex gates in FEASIBILITY.md need either an official hard per-call bound or an operator decision backed by evidence. Do not weaken the gate unilaterally.
+- (a) research current official GitHub Copilot and ChatGPT/Codex documentation again for a hard per-request bound and per-request credit receipts, then prototype an adapter against a small explicit allocation with operator-provided credential files; or
+- (b) wait for provider-side changes.
+
+Do not weaken the gate unilaterally. Offline work that can continue meanwhile:
+
+- hash-pinned `uv` in the image;
+- a Linux-host run of the executor probe;
+- final-day part 2 handling (needs the page structure verified manually by the operator, not fetched by BoC).
 
 Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -93,8 +93,8 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 ### 7. AoC 2026 readiness
 
 - [ ] Recheck site rules, event calendar, provider policy, models, and credit semantics.
-- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials.
-- [ ] Document installation, credential setup, budget configuration, private data handling, operation, and recovery.
+- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills done in `test/drills.test.ts`; live drills are pending.)
+- [x] Document installation, credential setup, budget configuration, private data handling, operation, and recovery. (`OPERATOR.md`)
 - [ ] Run an end-to-end rehearsal and obtain any remaining operator-side setup.
 
 ## Verification and handoff discipline
@@ -219,3 +219,14 @@ Terminal view and operator tooling verification (2026-09-27):
   - The override re-proposed an uncertain answer, so the next run would have submitted it automatically. It now returns the part to `ready`, and only a fresh proposal can submit that answer again.
   - The TUI did not restore the terminal. It now uses the alternate screen, hides and restores the cursor, and restores on exit.
   - The event buffer was kept even without the TUI; it is now kept only for the TUI.
+
+Operator guide and drills verification (2026-09-27):
+
+- Added `OPERATOR.md`.
+- Added offline drills (`test/drills.test.ts`):
+  - A network failure after the server received an answer becomes uncertain; the same run reconciles it by reading the page, with exactly one submission.
+  - An outage during reconciliation stops the run with the part left uncertain, and a later run resolves it without resubmitting.
+  - An expired session stops the run before any model call and resumes after renewal.
+  - With per-puzzle limits of 1 credit, quota exhaustion falls over to the second subscription and no counter is exceeded.
+  - A process killed mid-attempt resumes with the attempt recorded as interrupted, reuses the cached input, and records one submission.
+- `npm run check`: 122 offline tests passed.
