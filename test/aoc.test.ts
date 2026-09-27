@@ -155,7 +155,7 @@ test("client pins host, identifies itself, spaces requests, and never leaks the 
       sleeps.push(ms);
       now += ms;
     },
-    minIntervalMs: 5_000,
+    rateCap: { max: 5, windowMs: 60_000 },
   });
   const results = await Promise.all([
     client.fetchPuzzle(2025, 1),
@@ -171,7 +171,7 @@ test("client pins host, identifies itself, spaces requests, and never leaks the 
       ["POST", "https://adventofcode.com/2025/day/1/answer"],
     ],
   );
-  assert.deepEqual(sleeps, [5_000, 5_000], "serialized with minimum spacing");
+  assert.deepEqual(sleeps, [], "a puzzle/input/answer burst is not artificially delayed");
   const headers = fetch.calls[2]?.init.headers as Record<string, string>;
   assert.equal(headers.Cookie, `session=${COOKIE}`);
   assert.match(headers["User-Agent"] ?? "", /contact: ops@example\.invalid/);
@@ -201,6 +201,7 @@ test("client pins host, identifies itself, spaces requests, and never leaks the 
   );
   await assert.rejects(client.submitAnswer(2025, 1, 1, "has space"), /Invalid answer/);
   assert.equal(fetch.calls.length, 8, "invalid requests are never sent");
+  assert.ok(sleeps.length > 0, "8 starts against a cap of 5 per minute engage the brake");
 });
 
 test("client refuses unsafe cookie files, missing contact, and oversized responses", async (t) => {
@@ -210,7 +211,7 @@ test("client refuses unsafe cookie files, missing contact, and oversized respons
       contact: contact ?? undefined,
       version: "0",
       fetch: fakeFetch([new Response("x".repeat(5 * 1024 * 1024))]).impl,
-      minIntervalMs: 0,
+      rateCap: { max: 100, windowMs: 1 },
     });
   const config = (e: unknown) => e instanceof AocError && e.code === "config";
   await assert.rejects(
@@ -378,4 +379,34 @@ test("locally provable non-dispatch leaves the answer submittable", async (t) =>
   f.queue.push(main("That's the right answer!"));
   await f.svc.submit(day, 1);
   assert.equal(f.store.state.puzzles[day]?.parts[1].status, "solved");
+});
+
+test("the rate cap brakes runaway loops without delaying a normal burst", async (t) => {
+  let now = 0;
+  const starts: number[] = [];
+  const impl = (async () => {
+    starts.push(now);
+    return new Response("ok");
+  }) as typeof fetch;
+  const client = createAocClient({
+    cookieFile: await cookieFile(t),
+    contact: "ops@example.invalid",
+    version: "0",
+    fetch: impl,
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms;
+    },
+    rateCap: { max: 3, windowMs: 60_000 },
+  });
+  for (let i = 0; i < 7; i++) await client.fetchPuzzle(2025, 1);
+  assert.deepEqual(starts, [0, 0, 0, 60_000, 60_000, 60_000, 120_000]);
+  assert.throws(() =>
+    createAocClient({
+      cookieFile: "x",
+      contact: "ops@example.invalid",
+      version: "0",
+      rateCap: { max: 0, windowMs: 1 },
+    }),
+  );
 });

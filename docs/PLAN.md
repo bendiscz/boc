@@ -19,7 +19,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: milestone 4. First decide the `ModelRuntime` integration (FEASIBILITY.md: upstream injection point, audited facade, or a BoC-owned loop over `pi-agent-core`). Read the installed Pi SDK docs again for this and record the choice as a decision. Then build the solver executor from D010: a digest-pinned toolchain image definition (Python/uv, Node.js, Go, Rust), a networkless per-attempt container runner with resource limits, bounded output, and artifact export into `layout.attempt(...)`. Next come constrained solver tools (write file, run program, read allowed files) that only reach that executor, and a solve-loop skeleton driving `RunStore` and `AocService` with fake model/AoC transports. Operator question outstanding before live AoC use: the request-rate interpretation in `AOC.md`.
+Next concrete task: milestone 4. First decide the `ModelRuntime` integration (FEASIBILITY.md: upstream injection point, audited facade, or a BoC-owned loop over `pi-agent-core`). Read the installed Pi SDK docs again for this and record the choice as a decision. Then build the solver executor from D010: a digest-pinned toolchain image definition (Python/uv, Node.js, Go, Rust), a networkless per-attempt container runner with resource limits, bounded output, and artifact export into `layout.attempt(...)`. Next come constrained solver tools (write file, run program, read allowed files) that only reach that executor, and a solve-loop skeleton driving `RunStore` and `AocService` with fake model/AoC transports. The operator has settled the AoC pacing question: no artificial delays in a solve burst, and no needless requests (see `AOC.md`).
 
 Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -46,7 +46,7 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 ### 3. AoC transport and scheduling
 
-- [x] Implement a trusted cookie-file client with host restrictions, redacted errors, caching, timeouts, and polite request scheduling. (Rate interpretation awaits operator confirmation; see AOC.md.)
+- [x] Implement a trusted cookie-file client with host restrictions, redacted errors, caching, timeouts, and polite request scheduling. (Pacing per operator decision: no delays in a solve burst, no needless requests, sliding-window bug brake; see AOC.md.)
 - [x] Parse puzzle/answer responses and handle authentication failures, part unlocks, cooldowns, duplicates, and ambiguous submissions. (Wording unvalidated against live responses; final-day part 2 outstanding.)
 - [x] Implement past-puzzle mode and release waiting with verified calendar rules and a fake clock for tests. (`isReleased`/`waitForRelease`; day selection is done by the milestone 4 run loop.)
 - [x] Use only synthetic fixtures in committed tests.
@@ -132,3 +132,4 @@ AoC transport verification (2026-09-27):
   - Fixed: pre-dispatch failures no longer strand submissions as `uncertain`. There is a cookie preflight before the write-ahead record, plus a new `not-sent` verdict for proven non-dispatch.
   - Fixed: wait clauses are no longer cut at periods.
   - Recorded, not changed: reconciliation's `not-correct` may block an answer the server never judged (errs toward no duplicates), the POSIX-only cookie permission check (the orchestrator targets POSIX hosts), and final-day handling.
+- Operator pacing decision applied: removed the 5-second minimum spacing and added a sliding-window bug brake (`rateCap`, default 10 per 10 minutes). The unlock retries and the answer-wait embargo are unchanged. `npm run check` — 87 offline tests passed.

@@ -8,13 +8,19 @@ import { open } from "node:fs/promises";
  * - Session cookie read from a private file (owner-only permissions required),
  *   kept in a closure, and never included in errors, logs, or return values.
  * - Identifiable User-Agent with operator contact (AoC automation guidance).
- * - Requests are serialized with a minimum spacing, time out, never follow
- *   redirects, and have bounded response sizes. No automatic retries.
+ * - Requests are serialized but not artificially spaced: fetching a new puzzle,
+ *   its input, and answering is ordinary user behaviour (operator decision,
+ *   D014). Needless traffic is prevented by callers (sleep-until-release, caching,
+ *   server answer waits) plus a sliding-window cap here as a brake on bugs.
+ * - Requests time out, never follow redirects, and have bounded response sizes.
+ *   No automatic retries.
  * - Errors carry fixed messages and codes only (no URLs, bodies, or cookie).
  */
 
 export const AOC_ORIGIN = "https://adventofcode.com";
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+/** Generous for one puzzle's page/input/answer/part-2 burst; stops runaway loops. */
+export const DEFAULT_RATE_CAP = { max: 10, windowMs: 10 * 60_000 } as const;
 const COOKIE_PATTERN = /^[A-Za-z0-9]{16,512}(?![\s\S])/;
 
 export type AocErrorCode =
@@ -52,8 +58,11 @@ export interface AocClientOptions {
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
-  /** Minimum spacing between request starts. */
-  readonly minIntervalMs?: number;
+  /**
+   * Bug brake, not pacing: at most `max` request starts per `windowMs`. Excess
+   * requests sleep until the window frees. Normal solving stays far below it.
+   */
+  readonly rateCap?: { readonly max: number; readonly windowMs: number };
   readonly timeoutMs?: number;
 }
 
@@ -137,10 +146,13 @@ export function createAocClient(options: AocClientOptions): AocClient {
   const doFetch = options.fetch ?? fetch;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
-  const minIntervalMs = options.minIntervalMs ?? 5_000;
+  const rateCap = options.rateCap ?? DEFAULT_RATE_CAP;
+  if (!Number.isInteger(rateCap.max) || rateCap.max < 1 || !(rateCap.windowMs > 0)) {
+    throw new AocError("config", "Invalid AoC rate cap.");
+  }
   const timeoutMs = options.timeoutMs ?? 30_000;
   let cookie: Promise<string> | undefined;
-  let lastStart = Number.NEGATIVE_INFINITY;
+  const starts: number[] = [];
   let tail: Promise<unknown> = Promise.resolve();
 
   const loadCookie = () => {
@@ -171,9 +183,12 @@ export function createAocClient(options: AocClientOptions): AocClient {
         }).toString();
       }
       const session = await loadCookie();
-      const wait = lastStart + minIntervalMs - now();
-      if (wait > 0) await sleep(wait);
-      lastStart = now();
+      for (;;) {
+        while (starts.length > 0 && (starts[0] ?? 0) <= now() - rateCap.windowMs) starts.shift();
+        if (starts.length < rateCap.max) break;
+        await sleep((starts[0] ?? 0) + rateCap.windowMs - now());
+      }
+      starts.push(now());
       let response: Response;
       try {
         response = await doFetch(url, {

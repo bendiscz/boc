@@ -20,7 +20,7 @@ Rechecked on **2026-09-27** from documentation only. No puzzle pages, inputs, or
   - It is pinned to `https://adventofcode.com`, with paths built from validated integers.
   - The cookie is read from an owner-only regular file owned by the current user. It is never included in errors or return values.
   - The `User-Agent` is `BotOfCode/<version> (+https://github.com/bendiscz/boc; contact: <aoc.contact>)`, and a contact is required.
-  - Requests are serialized with a minimum spacing, time out after 30 s, and have bounded responses. Redirects are never followed and there are no retries.
+  - Requests are serialized without artificial spacing, capped by the sliding-window bug brake. They time out after 30 s and have bounded responses. Redirects are never followed and there are no retries.
 - `src/aoc/service.ts`:
   - Inputs and statements are cached in private storage and recorded by hash. A recorded input that disappears is not silently re-downloaded.
   - Submissions are write-ahead and send at most one request per proposal. Unknown outcomes become `uncertain` and are reconciled only by *reading* the puzzle page.
@@ -28,9 +28,14 @@ Rechecked on **2026-09-27** from documentation only. No puzzle pages, inputs, or
 - `src/aoc/calendar.ts` waits by sleeping, not polling. The retry delays for a just-released puzzle that is still reported unavailable are 15 s, 30 s, 60 s, and then 900 s.
 - Response phrase matching (`src/aoc/parse.ts`) reproduces the site's long-standing wording from memory. It is **not** validated against live responses. Unrecognized text is always `uncertain`.
 
-## Open question for the operator (before live use)
+## Operator decision: request pacing (2026-09-27)
 
-The request-rate guidance's scope is ambiguous for a racing bot. Read literally, "no more than once every 15 minutes" for *all* requests would allow roughly one action per quarter hour. Downloading the puzzle, downloading the input, and submitting are at least three requests per part. Current behaviour is event-driven, with no polling and a 5-second minimum spacing between discrete actions. This matches common tooling but is **an interpretation, not confirmed**. Before live submissions (milestone 6), the operator should confirm the acceptable rate, or BoC should adopt the literal 900-second spacing at the cost of speed. The spacing is a client option (`minIntervalMs`).
+The operator decided that BoC must **not** wait between the puzzle page, input, and answer requests when solving a newly released puzzle. That burst is no different from real users right after release. BoC must not send requests *needlessly*. It applies the 15-minute guidance to repeated or automated traffic that has no new purpose, and implements it as follows:
+
+- **Waiting for a release:** sleep until the release time plus a small margin, with no polling. If a just-released puzzle is still reported unavailable (clock skew), make a few bounded retries: 15 s, 30 s, 60 s, then 900 s.
+- **Further answer attempts:** obey the wait AoC reports after a wrong or too-recent answer. The embargo is event-wide and includes a margin. A conservative default applies when the wait cannot be parsed. Never resubmit a judged answer or an answer with an unknown outcome.
+- **Repeated downloads:** none. Statements and inputs are cached; reconciliation reads the puzzle page once per explicit call.
+- **Bug brake:** the client caps request starts in a sliding window, by default 10 per 10 minutes (`rateCap`). Normal solving stays below this cap; a runaway loop is slowed rather than allowed to hammer the site. This is not pacing: normal bursts go out immediately.
 
 ## Not yet handled
 
