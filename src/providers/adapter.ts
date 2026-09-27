@@ -34,9 +34,10 @@ export const CALIBRATION_ADAPTERS: Readonly<
 > = Object.freeze({ "github-copilot": (subscription) => createCopilotAdapter(subscription) });
 
 /**
- * Production registry. Empty until an adapter passes calibration; there is no
- * configuration switch to add one. Tests inject fake factories.
+ * Production registry: adapters with a passing calibration recorded in
+ * FEASIBILITY.md. There is no configuration switch to add one.
+ * - github-copilot: calibrated 2026-09-27 (gpt-6-sol, 15 calls; see FEASIBILITY.md).
  */
 export const PRODUCTION_ADAPTERS: Readonly<
   Partial<Record<Subscription["provider"], AdapterFactory>>
-> = Object.freeze({});
+> = Object.freeze({ "github-copilot": (subscription) => createCopilotAdapter(subscription) });

@@ -4,6 +4,8 @@ Inspected on **2026-09-27**. This is a documentation/source review plus offline 
 
 ## Decision (updated by D016): best-effort adapters after calibration
 
+**Status 2026-09-27:** GitHub Copilot passed calibration and is enabled (see "Copilot calibration result"). Codex and Anthropic have no adapter yet.
+
 The hard-credit contract below was the original gate. Neither subscription met it. On 2026-09-27 the operator relaxed it to best-effort limits (D016): a padded estimate is reserved before each call, actual charges are recorded with their source, runaway responses are cut off, and the overshoot tolerance is bounded. An adapter becomes eligible once it exists and passes a supervised calibration run; see "Calibration protocol" below. No adapter exists yet, so `src/providers/readiness.ts` still reports every provider as ineligible. The evidence below explains why the limits are best effort and not guaranteed.
 
 | Provider | Established by current official documentation | Missing for BoC admission |
@@ -109,4 +111,18 @@ The adapter is implemented (`src/providers/github-copilot.ts`) and tested offlin
 - **Official rates.** [Models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing), fetched 2026-09-27: 1 AI credit = $0.01, prices per 1M tokens. Configured `estimate.rates` are **credits per 1M tokens = USD × 100**. For example, Claude Sonnet 4.6 gives input 300, cacheRead 30, cacheWrite 375, output 1500. GPT-5.4 mini gives input 75, cacheRead 7.5, cacheWrite 0, output 450. Some models have higher long-context tiers above 200K–272K input tokens; BoC's contexts stay far below those thresholds, but configure the higher tier if in doubt.
 - **Included allowances.** Copilot Business and Enterprise include per-user AI-credit allowances pooled at the billing entity. BoC counts all usage against its own limits whether or not it falls within the included allowance.
 - **TLS.** On a host behind a TLS-intercepting proxy, run BoC with `NODE_EXTRA_CA_CERTS=<ca-bundle>` so that `github.com` and `*.githubcopilot.com` validate.
-- **Status.** Registered in `CALIBRATION_ADAPTERS` only. It is usable through `boc run --calibrate --days …` for already released days, and is not in `PRODUCTION_ADAPTERS` until a passing calibration is recorded here.
+- **Status.** Calibrated (see below) and registered in `PRODUCTION_ADAPTERS` on 2026-09-27.
+
+### Copilot calibration result (2026-09-27): passed
+
+- **Setup.** Operator-supervised `boc run --calibrate --days 1,2` on AoC 2025 (past event), on the operator's GitHub Enterprise Copilot seat.
+  - Model: `gpt-6-sol`, through the `openai-responses` API.
+  - Rates: input 200, cacheRead 20, cacheWrite 250, output 1000 credits per 1M tokens (official price list, default tier).
+  - Safety factor 1.5, output cap 16000 tokens, limits 300 per event and 100 per puzzle, no provider-side cap.
+  - Run on this host behind the TLS-intercepting proxy with `NODE_EXTRA_CA_CERTS`.
+- **Outcome.** Both parts of both days were solved with correct answers on the first submissions. No errors or uncertain outcomes.
+- **`boc calibration-report`.** 15 calls, all settled, none held or uncertain. Estimated 392.58225 credits; charged 4.54678, all `derived` from reported token usage. Largest actual/estimate ratio: 0.026.
+- **GitHub's reported AI-credit usage for the same window:** 4.55. The difference is 0.0032 credits (0.07 %), within display rounding.
+- **Against the D016 criteria.** No call exceeded its estimate (max 0.026, limit 1.5×), and the totals agree well within 10 %. **Passed.**
+- **Observation.** The estimates are very conservative, about 86× the actual in total, because the 16000-token output cap dominates each reservation (roughly 26 credits per call). The limits are therefore not exceeded, but near a limit BoC may stop with up to one reservation of headroom unused. If that matters, a lower `assumedMaxOutputTokens` narrows the gap, at the risk of truncating reasoning-heavy answers.
+- **Recheck** rates, the model catalog, and a small calibration before each event.

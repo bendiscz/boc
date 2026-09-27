@@ -19,7 +19,7 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 ## Status
 
-The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an offline-tested AoC transport (no live AoC access yet), a constrained solver agent loop with a two-part solve orchestrator and budget-aware subscription selection, a networkless Docker executor with a toolchain image, and offline tests. Live solving, provider requests, AoC access, and the TUI are not implemented yet. Both subscription adapters remain disabled pending enforceable credit accounting.
+The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an AoC transport, a constrained solver agent loop with a two-part solve orchestrator and budget-aware subscription selection, a networkless Docker executor with a toolchain image, and offline tests. GitHub Copilot passed a supervised live calibration on 2026-09-27 (AoC 2025 days 1–2 solved; BoC's charged credits matched GitHub's figure within 0.1 %). It is the only enabled provider. Codex and Anthropic adapters are pending. Both subscription adapters remain disabled pending enforceable credit accounting.
 
 Requires Node.js 24.21+ within the 24 LTS line and npm:
 

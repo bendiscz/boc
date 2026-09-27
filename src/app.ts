@@ -11,12 +11,14 @@ import {
   PRODUCTION_ADAPTERS,
   type ProviderAdapter,
 } from "./providers/adapter.ts";
+import { AdapterError } from "./providers/github-copilot.ts";
 import { createDockerExecutor, type Executor } from "./sandbox/executor.ts";
 import { type PartOutcome, solvePuzzle } from "./solver/run.ts";
 import { type PuzzleId, puzzleId } from "./state/ids.ts";
 import { layout } from "./state/layout.ts";
 import { type RunState, RunStore } from "./state/run-state.ts";
 import { writeViews } from "./state/summary.ts";
+import { PrivateFileError } from "./util/private-file.ts";
 import { abortableSleep } from "./util/sleep.ts";
 
 /**
@@ -84,7 +86,17 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
       log(`subscription ${subscription.id}: no estimate configured; not used`);
       continue;
     }
-    const adapter = await factories[subscription.provider]?.(subscription);
+    let adapter: ProviderAdapter | undefined;
+    try {
+      adapter = await factories[subscription.provider]?.(subscription);
+    } catch (error) {
+      // Fixed-message adapter/credential errors are safe to show; others are generic.
+      const safe = error instanceof AdapterError || error instanceof PrivateFileError;
+      log(
+        `subscription ${subscription.id}: ${safe ? error.message : "adapter could not be created"}; not used`,
+      );
+      continue;
+    }
     if (adapter) {
       if (adapter.model.id !== subscription.model) {
         throw new AppError(`Adapter model does not match subscription ${subscription.id}.`);
@@ -94,7 +106,7 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
   }
   if (adapters.size === 0) {
     throw new AppError(
-      "No eligible provider adapter: no calibrated adapter exists for any configured subscription (see docs/FEASIBILITY.md).",
+      "No eligible provider adapter: no configured subscription has a calibrated, usable adapter (see the log above and docs/OPERATOR.md).",
     );
   }
   for (const pool of config.creditPools) {

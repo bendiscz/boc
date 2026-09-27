@@ -77,6 +77,9 @@ export async function createCopilotAdapter(
     throw new AdapterError("Not a Copilot subscription.");
   const settings = estimateSettings(subscription);
   if (!settings) throw new AdapterError("Subscription has no estimate configured.");
+  if (settings.rates.input <= 0n || settings.rates.output <= 0n) {
+    throw new AdapterError("Subscription estimate rates are not configured (zero).");
+  }
   const provider = options.provider ?? githubCopilotProvider();
   const oauth = provider.auth.oauth;
   if (!oauth) throw new AdapterError("Copilot provider has no OAuth support.");

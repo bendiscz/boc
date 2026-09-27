@@ -11,6 +11,7 @@
   - Ctrl-C stops gracefully (exit code 130) and the run can be resumed.
 - Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
 - Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
+- **Copilot calibration passed (2026-09-27):** 15 calls, 4.54678 credits charged versus 4.55 reported by GitHub, max actual/estimate 0.026. AoC 2025 days 1–2 were fully solved. The Copilot adapter is now in `PRODUCTION_ADAPTERS`.
 - GitHub Copilot adapter (`src/providers/github-copilot.ts`): credential file only, token refresh, output cap, and charges derived from usage. Plus `boc login`, calibration-only registration (`run --calibrate`), and `boc calibration-report` (D018). Not yet used live.
 - Best-effort credit limits (D016):
   - estimated, padded reservations from per-subscription rates;
@@ -36,22 +37,21 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **the calibration run with the operator** (OPERATOR.md "Calibration run"; FEASIBILITY.md "Calibration protocol").
+Next concrete task: the Anthropic adapter (D017), then Codex. Mirror the Copilot adapter:
 
-The Copilot adapter, `boc login`, `run --calibrate`, and `calibration-report` are implemented and tested offline. The operator needs to:
+- API-key file credential via `readPrivateFile`;
+- verify in the installed pi-ai `anthropic-messages` code that `max_tokens` is enforced and usage is reported;
+- estimate rates from the official Anthropic price list (USD per token);
+- offline tests with a fake provider;
+- `CALIBRATION_ADAPTERS` registration, then an operator calibration run.
 
-- set up a past-event config with a small allowance, official rates, and ideally a GitHub budget;
-- run `boc login`;
-- run a supervised `run --calibrate --days …` with `NODE_EXTRA_CA_CERTS` on this host;
-- share the calibration report and GitHub's usage figures.
+Also worth doing:
 
-Then:
+- a longer Copilot rehearsal on more past days to evaluate solving strategy (milestone 6: correctness, credits, latency);
+- optionally tuning `assumedMaxOutputTokens` (FEASIBILITY observation);
+- the final-day part 2 handling.
 
-1. Evaluate the calibration against the D016 criteria, record it in FEASIBILITY.md, and fix any defects found. The first live requests will probably reveal protocol details, such as headers and usage fields.
-2. If it passes, promote the adapter to `PRODUCTION_ADAPTERS`.
-3. Next adapter: Anthropic (D017).
-
-Do not make live calls except in the supervised calibration run the operator sets up. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
+Live calls are allowed only through calibrated adapters (Copilot) or supervised `--calibrate` runs the operator starts; the orchestrator never makes live provider or AoC calls during development sessions on its own. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -98,8 +98,8 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 ### 6. Authorized historical evaluation
 
 - [ ] Ask for credential-file paths and perform the minimum required interactive authorization; never ask for pasted secrets.
-- [ ] Validate actual subscription entitlements and credit reconciliation under a small explicit allocation.
-- [ ] Validate the dedicated AoC account/session and site conduct before submissions.
+- [x] Validate actual subscription entitlements and credit reconciliation under a small explicit allocation. (Copilot, 2026-09-27; Codex and Anthropic pending.)
+- [x] Validate the dedicated AoC account/session and site conduct before submissions. (2025 days 1–2 fetched and submitted in the calibration run.)
 - [ ] Evaluate representative older puzzles privately; record correctness, credit usage, latency, and failure modes without consulting solutions.
 - [ ] Turn discovered defects into synthetic regression tests and refine scheduling/solver strategy.
 
@@ -275,4 +275,11 @@ Copilot adapter verification (2026-09-27):
   - A credential renewed on disk was ignored by a running adapter. It is now re-read before refreshing.
   - The calibration report did not show uncertain holds; it now counts them.
 - The review also confirmed that the explicit `apiKey` prevents pi-ai's `COPILOT_GITHUB_TOKEN` environment fallback, and that adapter construction makes no network request.
+- `npm run check`: 136 offline tests passed.
+
+Copilot calibration and promotion (2026-09-27):
+
+- Operator-run calibration as recorded in FEASIBILITY.md: passed.
+- Promoted Copilot to `PRODUCTION_ADAPTERS`, and `providerReadiness` now reports it eligible.
+- Adapters whose construction fails (missing or unsafe credential, zero rates) are now logged and skipped, so a run with no usable subscription still refuses to start. The adapter refuses zero rates before reading any credential, which keeps tests hermetic against the example config.
 - `npm run check`: 136 offline tests passed.

@@ -1,6 +1,6 @@
 # Operator guide
 
-This guide covers installing, configuring, running, and recovering BoC. **No provider adapter exists yet.** GitHub Copilot is being implemented first (D016), so `boc run` currently refuses to start. Everything else described here works offline today.
+This guide covers installing, configuring, running, and recovering BoC. **GitHub Copilot is the only enabled provider** (calibrated 2026-09-27). Codex and Anthropic are not implemented yet. Everything else described here works offline today.
 
 ## Prerequisites
 

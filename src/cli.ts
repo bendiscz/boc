@@ -44,7 +44,7 @@ Usage:
   boc --help                       Show this help
 
 Ledger and submission commands need exclusive access: stop BoC first.
-No adapter is calibrated yet: \`boc run\` refuses to start unless --calibrate is given.`;
+Calibrated providers: github-copilot. Others run only with --calibrate once implemented.`;
 
 class UsageError extends Error {}
 
