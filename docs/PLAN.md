@@ -11,6 +11,7 @@
   - Ctrl-C stops gracefully (exit code 130) and the run can be resumed.
 - Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
 - Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
+- Codex adapter implemented (D019; shares `oauth-adapter.ts` with Copilot). It is calibration-only and awaits its run. Anthropic is deferred because the policy forbids subscription OAuth, and there is no API key yet.
 - **Copilot calibration passed (2026-09-27):** 15 calls, 4.54678 credits charged versus 4.55 reported by GitHub, max actual/estimate 0.026. AoC 2025 days 1–2 were fully solved. The Copilot adapter is now in `PRODUCTION_ADAPTERS`.
 - GitHub Copilot adapter (`src/providers/github-copilot.ts`): credential file only, token refresh, output cap, and charges derived from usage. Plus `boc login`, calibration-only registration (`run --calibrate`), and `boc calibration-report` (D018). Not yet used live.
 - Best-effort credit limits (D016):
@@ -37,19 +38,14 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: the Anthropic adapter (D017), then Codex. Mirror the Copilot adapter:
+Next concrete task: **the Codex calibration run with the operator** (OPERATOR.md "Calibration run (Codex)"). The prepared private config is `var/calibration-codex.config.json`: AoC 2025, days 3 and 4 (not yet solved on the account), `gpt-6-sol`, 300 Codex credits for the event and 100 per puzzle. Evaluate against D016 and promote Codex if it passes.
 
-- API-key file credential via `readPrivateFile`;
-- verify in the installed pi-ai `anthropic-messages` code that `max_tokens` is enforced and usage is reported;
-- estimate rates from the official Anthropic price list (USD per token);
-- offline tests with a fake provider;
-- `CALIBRATION_ADAPTERS` registration, then an operator calibration run.
+Afterwards:
 
-Also worth doing:
-
-- a longer Copilot rehearsal on more past days to evaluate solving strategy (milestone 6: correctness, credits, latency);
-- optionally tuning `assumedMaxOutputTokens` (FEASIBILITY observation);
-- the final-day part 2 handling.
+- a longer rehearsal on more past days for solving strategy (milestone 6);
+- Anthropic, once the operator has a Claude Console API key (D019);
+- optional tuning of `assumedMaxOutputTokens`;
+- final-day part 2 handling.
 
 Live calls are allowed only through calibrated adapters (Copilot) or supervised `--calibrate` runs the operator starts; the orchestrator never makes live provider or AoC calls during development sessions on its own. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -283,3 +279,17 @@ Copilot calibration and promotion (2026-09-27):
 - Promoted Copilot to `PRODUCTION_ADAPTERS`, and `providerReadiness` now reports it eligible.
 - Adapters whose construction fails (missing or unsafe credential, zero rates) are now logged and skipped, so a run with no usable subscription still refuses to start. The adapter refuses zero rates before reading any credential, which keeps tests hermetic against the example config.
 - `npm run check`: 136 offline tests passed.
+
+Codex adapter verification (2026-09-27):
+
+- Read pi-ai 0.87.1's Codex provider, OAuth, and responses API. Checked the official Codex authentication and pricing pages; the Help Center page returned 403. The findings and the Anthropic policy result are in FEASIBILITY.md.
+- Refactored the Copilot adapter into a generic `oauth-adapter.ts`. `boc login` now supports Codex (device code chosen automatically) and refuses Anthropic.
+- Errors before any output now settle at zero rather than at the full reservation.
+- `npm run check`: 140 offline tests passed, including all Copilot tests unchanged after the refactor. New coverage:
+  - Codex estimates using the assumed output maximum;
+  - a credential without an account is refused;
+  - Codex registered for calibration only, and Anthropic in no registry;
+  - the real Pi Codex catalog provides `gpt-6-sol`;
+  - device-code selection;
+  - Anthropic login refused;
+  - zero-charge early errors.

@@ -3,6 +3,7 @@ import type { CreditMeter } from "../budget/admission.ts";
 import type { Credits } from "../budget/credits.ts";
 import type { BocConfig } from "../config.ts";
 import { createCopilotAdapter } from "./github-copilot.ts";
+import { createCodexAdapter } from "./openai-codex.ts";
 
 type Subscription = BocConfig["subscriptions"][number];
 
@@ -31,7 +32,10 @@ export type AdapterFactory = (subscription: Subscription) => Promise<ProviderAda
  */
 export const CALIBRATION_ADAPTERS: Readonly<
   Partial<Record<Subscription["provider"], AdapterFactory>>
-> = Object.freeze({ "github-copilot": (subscription) => createCopilotAdapter(subscription) });
+> = Object.freeze({
+  "github-copilot": (subscription) => createCopilotAdapter(subscription),
+  "openai-codex": (subscription) => createCodexAdapter(subscription),
+});
 
 /**
  * Production registry: adapters with a passing calibration recorded in

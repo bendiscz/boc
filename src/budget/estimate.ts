@@ -2,7 +2,14 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { BocConfig } from "../config.ts";
 import type { AdmissionRequest } from "../pi/guarded-streams.ts";
 import type { CreditMeter } from "./admission.ts";
-import { addCredits, type Credits, parseCredits, scaleCredits, tokenCost } from "./credits.ts";
+import {
+  addCredits,
+  type Credits,
+  parseCredits,
+  scaleCredits,
+  tokenCost,
+  ZERO_CREDITS,
+} from "./credits.ts";
 import type { ChargeSource } from "./ledger.ts";
 
 /**
@@ -114,6 +121,15 @@ export function createEstimatingMeter(options: EstimatingMeterOptions): CreditMe
           credits,
           receipt: `usage:${options.settings.pricing}:${u.input}/${u.output}/${u.cacheRead}/${u.cacheWrite}`,
           source: "derived" as ChargeSource,
+        };
+      }
+      // A provider error before any output (e.g. HTTP 429/400) generates nothing
+      // billable: best effort records zero, labelled as an estimate.
+      if (message.stopReason === "error" && message.content.length === 0) {
+        return {
+          credits: ZERO_CREDITS,
+          receipt: "error-before-output",
+          source: "estimated" as ChargeSource,
         };
       }
       // No usage reported: keep the estimate as the charge (best effort, never zero).

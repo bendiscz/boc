@@ -121,3 +121,9 @@ On 2026-09-27 the operator added Anthropic as a supported LLM provider (`provide
 ## D018 — Calibration-only adapters and interactive login
 
 Implemented adapters start in `CALIBRATION_ADAPTERS` (`src/providers/adapter.ts`) and can run only through `boc run --calibrate --days …`, for already released days (past puzzles) under operator supervision. `boc calibration-report` summarizes, per subscription, the calls made, estimated versus charged credits by source, held reservations, and the largest actual/estimate ratio, for comparison with the provider's billing. An adapter moves to `PRODUCTION_ADAPTERS` only after FEASIBILITY.md records a passing calibration. `boc login <config> <subscription>` performs the provider's interactive authorization and writes only that subscription's credential file; tokens are never printed or passed as arguments.
+
+## D019 — Codex via the operator's own ChatGPT sign-in; Anthropic deferred
+
+On 2026-09-27 the operator chose to skip Anthropic for now: the compliant API-key path needs Claude Console access that is not available. Anthropic stays in the configuration schema but has no adapter, and `boc login` refuses Anthropic because subscription OAuth is prohibited for third-party tools (FEASIBILITY.md).
+
+Codex uses the operator's own ChatGPT Business sign-in through pi-ai's Codex provider. The official Codex docs describe ChatGPT sign-in for Codex apps and do not prohibit this, but they do not document a third-party contract either (FEASIBILITY.md). The Copilot and Codex adapters share `src/providers/oauth-adapter.ts`. Codex does not enforce output caps, so its estimates use the assumed maximum and rely on the streaming cutoff. Codex joins `CALIBRATION_ADAPTERS`, and moves to production only after a passing calibration.

@@ -104,6 +104,12 @@ test("actual charges prefer provider figures, then usage, then the estimate", as
     receipt: "estimate:synthetic-2026",
     source: "estimated",
   });
+  const failedEarly = message({ stopReason: "error", content: [], usage: empty.usage });
+  assert.deepEqual(await meter.actualCharge(failedEarly, c("0.5")), {
+    credits: 0n,
+    receipt: "error-before-output",
+    source: "estimated",
+  });
   const reporting = createEstimatingMeter({
     settings,
     enforcesMaxTokens: true,

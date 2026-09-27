@@ -142,3 +142,20 @@ The operator asked for the same login Pi uses for Anthropic: a Claude.ai subscri
   1. **Anthropic API key** from Claude Console, for example an organization or workspace under the company's agreement. Usage is billed per token to the key owner. Console workspace spend limits can serve as the provider-side cap. pi-ai's `anthropic-messages` API always sends `max_tokens` and reports usage, so estimates and `derived` charges should be accurate. This is the recommended path.
   2. **A supported cloud provider** (Amazon Bedrock or Google Vertex AI) with the organization's own cloud credentials.
   3. **Driving the unmodified Claude Code binary** signed in with the operator's own subscription. This is permitted for an end user, but it does not fit BoC's architecture: Claude Code runs its own tool loop and web tools on the host, outside BoC's guard, ledger, and container isolation, and the policy frames subscription limits around "ordinary, individual usage". Not recommended.
+
+## ChatGPT Business / Codex adapter findings (2026-09-27, pi-ai 0.87.1)
+
+The adapter is implemented (`src/providers/openai-codex.ts`, sharing `oauth-adapter.ts` with Copilot) and tested offline. It is registered in `CALIBRATION_ADAPTERS` only.
+
+- **Policy.** The official [Codex authentication page](https://developers.openai.com/codex/auth), fetched 2026-09-27, describes "Sign in with ChatGPT" for the ChatGPT desktop app, the Codex CLI, and the IDE extension. It recommends API keys "for programmatic Codex CLI workflows, such as CI/CD jobs", and Codex access tokens for trusted automation in ChatGPT Enterprise workspaces.
+  - Unlike Anthropic, no official statement found **prohibits** third-party clients from using the operator's own ChatGPT sign-in. None documents a contract for it either.
+  - The Help Center "Using Codex with your ChatGPT plan" page returned HTTP 403; this is an evidence gap.
+  - The operator uses their own Business seat, attended, through a client that identifies itself honestly: pi-ai sends `originator: pi` and Pi's User-Agent, while using the Codex OAuth client ID.
+  - Recheck before events. Stop if OpenAI publishes a restriction or the workspace admin disallows it.
+- **Auth.** ChatGPT OAuth, with a device-code flow chosen automatically by `boc login` because it needs no local callback server. The credential holds `refresh`, `access`, `expires`, and `accountId` (sent as `chatgpt-account-id`). The file-only storage, refresh, and redaction rules match Copilot.
+- **Transport.** The endpoint is `https://chatgpt.com/backend-api` (responses). The guard forces SSE, so the WebSocket path and its fallbacks are skipped. HTTP retries come only from `options.maxRetries`, forced to 0. Request bodies may be zstd-compressed.
+- **No output cap.** The Codex request body carries no output-token limit, even when `maxTokens` is set. The adapter therefore uses `enforcesMaxTokens: false`: estimates use `assumedMaxOutputTokens`, and the guard's streaming cutoff bounds runaway responses.
+- **Credits.** The [Codex pricing page](https://developers.openai.com/codex/pricing), fetched 2026-09-27, gives standard-speed credit rates per 1M tokens. GPT-6 Sol costs 50 input, 5 cached input, and 250 output. There is no cache-write charge, and fast mode costs 2.5×.
+  - "Credit prices alone don't determine included subscription usage", and "If you reach your usage limits during an active turn, the agent will be able to continue working on that turn".
+  - BoC charges all usage at credit rates (`derived`), whether it falls within included usage or is paid from credits. Comparing against the ChatGPT usage dashboard may therefore be approximate while usage stays inside the included allowance.
+- **Early errors.** A provider error before any output (for example a usage-limit 429) is now settled at zero (`estimated`, `error-before-output`) instead of at the full reservation. This applies to all adapters.

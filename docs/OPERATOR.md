@@ -1,6 +1,6 @@
 # Operator guide
 
-This guide covers installing, configuring, running, and recovering BoC. **GitHub Copilot is the only enabled provider** (calibrated 2026-09-27). Codex and Anthropic are not implemented yet. Everything else described here works offline today.
+This guide covers installing, configuring, running, and recovering BoC. **GitHub Copilot is the only enabled provider** (calibrated 2026-09-27). Codex is implemented and awaiting calibration. Anthropic is deferred until an API key is available (D019). Everything else described here works offline today.
 
 ## Prerequisites
 
@@ -95,6 +95,10 @@ Stop BoC before any command that changes state. They all take the same locks.
 5. Run a few past days: `node dist/main.js run boc.config.json --calibrate --days 1,2 --tui` (the config's `event.year` must be a past event).
 6. Run `node dist/main.js calibration-report boc.config.json`, and compare the charged total with GitHub's usage report for the same time window.
 7. Send the report and the GitHub figures to the developer, who records the result in FEASIBILITY.md.
+
+## Calibration run (Codex)
+
+Use the same steps as the Copilot calibration, with a Codex subscription (`provider: "openai-codex"`, for example model `gpt-6-sol`) and rates from the [Codex pricing page](https://developers.openai.com/codex/pricing). The native unit is Codex credits per 1M tokens. `boc login` selects ChatGPT's device-code sign-in automatically: open the printed URL and enter the code. Compare the calibration report with the Codex usage dashboard (`https://chatgpt.com/codex/settings/usage`). While usage stays inside the included allowance, the dashboard may show percentages rather than credits.
 
 ## Before each event
 
