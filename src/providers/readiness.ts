@@ -6,13 +6,14 @@ export interface ProviderReadiness {
   reason: string;
 }
 
-// Deliberately no configuration switch to turn these into eligible adapters.
-// Authentication and user-supplied credit rates are not proof of a safe upper bound.
+// Deliberately no configuration switch. Under D016 an adapter becomes usable once
+// it exists in src/providers/, estimates per-call charges from configured rates,
+// and has passed a supervised calibration run (docs/FEASIBILITY.md).
 export function providerReadiness(provider: Provider): ProviderReadiness {
   return {
     provider,
     eligible: false,
     reason:
-      "Live execution disabled: authoritative credit accounting and a conservative per-call bound are not validated.",
+      "Live execution disabled: no calibrated adapter for this provider yet (best-effort limits, D016).",
   };
 }

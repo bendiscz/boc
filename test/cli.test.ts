@@ -37,7 +37,7 @@ test("valid config is not reported as ready for live solving", async () => {
     0,
   );
   assert.match(output.stdout.join("\n"), /Credential files were not read/);
-  assert.equal(output.stdout.filter((line) => line.includes("Live execution disabled")).length, 2);
+  assert.equal(output.stdout.filter((line) => line.includes("Live execution disabled")).length, 3);
 });
 
 test("bad commands fail without echoing their potentially secret arguments", async () => {

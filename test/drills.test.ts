@@ -34,6 +34,10 @@ async function drill(t: test.TestContext, subscriptions = 1, perPuzzle = "20") {
     model: FAKE_MODEL.id,
     creditPool: `pool-${i + 1}`,
     limits: { event: "100", perPuzzle },
+    estimate: {
+      pricing: "synthetic",
+      rates: { input: "1", output: "1", cacheRead: "1", cacheWrite: "1" },
+    },
   }));
   const config = parseConfig({
     version: 1,

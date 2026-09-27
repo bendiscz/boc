@@ -1,6 +1,6 @@
 # Operator guide
 
-This guide covers installing, configuring, running, and recovering BoC. **No provider adapter is eligible yet** (see [FEASIBILITY.md](FEASIBILITY.md)), so `boc run` currently refuses to start. Everything else described here works offline today.
+This guide covers installing, configuring, running, and recovering BoC. **No provider adapter exists yet.** GitHub Copilot is being implemented first (D016), so `boc run` currently refuses to start. Everything else described here works offline today.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ Keep credentials in ignored `.secrets/` or outside the repository. Keep runtime 
 
 ## Budgets
 
-Budgets are AI credits in each provider's native unit; see [CONFIGURATION.md](CONFIGURATION.md). Every subscription and every pool has an event limit and a per-puzzle limit, and each call must fit within all four. Zero means nothing is admitted. Lowering limits mid-event is allowed; renaming or rebinding subscriptions or pools is refused so that history cannot be reset.
+Budgets are AI credits in each provider's native unit; see [CONFIGURATION.md](CONFIGURATION.md). Every subscription and every pool has an event limit and a per-puzzle limit, and each call's padded estimate must fit within all four. **Limits are best effort (D016).** A limit can be exceeded by up to one call's excess over its estimate, plus the pool's `overshootTolerance`. Configure a provider-side spending cap where the provider offers one, set `providerCap: "configured"`, and keep each subscription's `estimate.rates` in line with the provider's current price list. Zero means nothing is admitted. Lowering limits mid-event is allowed; renaming or rebinding subscriptions or pools is refused so that history cannot be reset.
 
 ```sh
 node dist/main.js check-config boc.config.json

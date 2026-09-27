@@ -8,14 +8,14 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 ## Planned capabilities
 
-- GitHub Enterprise Copilot and ChatGPT Business/Codex subscription integrations, subject to actual account access and enterprise policy.
+- GitHub Enterprise Copilot (first), ChatGPT Business/Codex, and Anthropic integrations, subject to actual account access and provider policy.
 - Effective use of multiple available subscriptions, with separate credit accounting and budget-aware scheduling.
 - Configurable per-puzzle and event-wide AI-credit limits, including subscription-specific limits.
 - Python (`uv`), Node.js, Go, and Rust solution toolchains.
 - Recoverable runs, detailed local artifacts, and a lightweight TUI.
 - No retrieval of existing solutions, no publication of AoC puzzle text or inputs, and file-based secrets kept outside Git.
 
-**Budget safety:** chargeable work must have a conservative, enforceable credit bound before it starts. Unsupported or uncertain provider accounting must stop work rather than risk exceeding a limit. Authentication support alone does not establish usable credit accounting. Limits cover BoC's activity; shared account-wide usage requires provider-side controls or exclusive allocation.
+**Budget safety (best effort):** each call reserves a padded cost estimate against every limit before it starts. Actual charges come from the provider, from token usage, or from the estimate, and each is labelled with its source. Runaway responses are cut off, and a pool blocks once its overshoot passes a tolerance. BoC tries to match limits as exactly as practical but does not guarantee never exceeding them. A provider-side spending cap is the recommended hard backstop. Limits cover BoC's activity only.
 
 ## Status
 

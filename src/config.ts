@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CREDIT_PATTERN, parseCredits } from "./budget/credits.ts";
 
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,63}(?![\s\S])/);
-const provider = z.enum(["github-copilot", "openai-codex"]);
+const provider = z.enum(["github-copilot", "openai-codex", "anthropic"]);
 const amount = z.string().regex(CREDIT_PATTERN);
 const filePath = z
   .string()
@@ -54,6 +54,13 @@ const configSchema = z
           provider,
           unit: identifier,
           limits,
+          /**
+           * Best-effort enforcement (D016): total unacknowledged charge above
+           * estimates tolerated before admission blocks. Default 5% of the event limit.
+           */
+          overshootTolerance: amount.optional(),
+          /** Whether a provider-side spending cap backs this pool; "none" warns. */
+          providerCap: z.enum(["configured", "none"]).optional(),
         }),
       )
       .min(1)
@@ -67,6 +74,25 @@ const configSchema = z
           model: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}(?![\s\S])/),
           creditPool: identifier,
           limits,
+          /** Per-call estimation (D016). Required before the subscription can run. */
+          estimate: z
+            .strictObject({
+              /** Pricing source label, e.g. "github-2026-09". */
+              pricing: identifier,
+              /** Native credits per million tokens. */
+              rates: z.strictObject({
+                input: amount,
+                output: amount,
+                cacheRead: amount,
+                cacheWrite: amount,
+              }),
+              safetyFactor: z
+                .string()
+                .regex(/^[1-9](\.[0-9]{1,6})?(?![\s\S])/)
+                .optional(),
+              assumedMaxOutputTokens: z.number().int().min(1).max(1_000_000).optional(),
+            })
+            .optional(),
         }),
       )
       .min(1)

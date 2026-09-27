@@ -278,24 +278,48 @@ test("configuration changes cannot reset history", async (t) => {
   await assert.rejects(reserve(lowered, "0.000000000000000001"), denied);
 });
 
-test("an overrun is recorded truthfully and blocks admission until acknowledged", async (t) => {
+test("an overrun is recorded truthfully; excess beyond the pool tolerance blocks that pool", async (t) => {
   const dir = await directory(t);
   let ledger = await openLedger(t, dir);
+  // Default tolerance: 5% of the copilot pool's event limit of 100 = 5.
+  const small = await reserve(ledger, "2", "copilot-a", day2);
+  await ledger.settle(small, c("6"), "receipt:small", "derived");
+  assert.deepEqual(ledger.status().pendingOverruns, [small]);
+  const pool = ledger.status().overshoot.find((o) => o.pool === "copilot-pool");
+  assert.deepEqual(pool, {
+    pool: "copilot-pool",
+    excess: c("4"),
+    tolerance: c("5"),
+    blocking: false,
+  });
+  await reserve(ledger, "1", "copilot-b", day2); // still within tolerance: best effort continues
+
   const id = await reserve(ledger, "2");
   await ledger.settle(id, c("12"), "receipt:overrun");
   const x = counterOf(ledger, "subscription", "copilot-a", day1);
   assert.equal(x.spent, c("12"));
   assert.equal(x.exceeded, true);
   assert.equal(x.remaining, 0n);
-  await assert.rejects(reserve(ledger, "1", "codex"), denied);
+  await assert.rejects(reserve(ledger, "1", "copilot-b", day2), denied, "excess 14 > tolerance 5");
+  await reserve(ledger, "1", "codex"); // another pool is unaffected
   await ledger.close();
   ledger = await openLedger(t, dir);
-  assert.deepEqual(ledger.status().pendingOverruns, [id]);
-  await assert.rejects(reserve(ledger, "1", "codex"), denied);
+  assert.equal(ledger.status().overshoot.find((o) => o.pool === "copilot-pool")?.blocking, true);
+  await assert.rejects(reserve(ledger, "1", "copilot-b", day2), denied);
   await ledger.acknowledgeOverrun(id, "operator-reviewed");
-  await reserve(ledger, "1", "codex");
+  await reserve(ledger, "1", "copilot-b", day2);
   await assert.rejects(reserve(ledger, "0.1", "copilot-a", day1), denied, "puzzle still exceeded");
-  await reserve(ledger, "1", "copilot-a", day2);
+});
+
+test("a configured overshoot tolerance replaces the 5% default", async (t) => {
+  const cfg = config({});
+  const pool = cfg.creditPools[0];
+  assert.ok(pool);
+  pool.overshootTolerance = "0";
+  const ledger = await openLedger(t, await directory(t), cfg);
+  const id = await reserve(ledger, "1");
+  await ledger.settle(id, c("1.000000000000000001"), "receipt:tiny");
+  await assert.rejects(reserve(ledger, "1", "copilot-b"), denied);
 });
 
 test("a failed journal sync faults the ledger and counts the reservation as held", async (t) => {

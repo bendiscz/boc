@@ -11,6 +11,14 @@
   - Ctrl-C stops gracefully (exit code 130) and the run can be resumed.
 - Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
 - Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
+- Best-effort credit limits (D016):
+  - estimated, padded reservations from per-subscription rates;
+  - charge source labels (provider, derived, estimated, operator);
+  - a per-pool overshoot tolerance (default 5 %) that replaces the global overrun block;
+  - a streaming cutoff that settles as an estimate without faulting;
+  - warnings about missing provider-side caps.
+
+  Anthropic is now a third provider (D017).
 - Offline AoC transport (D014, `AOC.md`): pinned-host cookie-file client, conservative response parsers, release calendar, and a cached, write-ahead submission service, tested only with fake transports and synthetic HTML.
 - Durable run-state journal with a validated puzzle/part state machine, private artifact layout, derived Markdown views, and `status`/`views`/`ledger` CLI commands (D013).
 - Durable four-counter credit ledger (`src/budget/ledger.ts`) and ledger-backed `Admission` (`src/budget/admission.ts`) implemented and tested offline with fake providers; see D012. No production `CreditMeter` exists, so nothing can be admitted for a real provider.
@@ -27,18 +35,27 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **operator decision needed on provider eligibility** (milestone 6 is blocked). All offline milestones through the offline parts of 7 are implemented. The remaining work needs an eligible provider adapter. It must supply a certified per-call credit upper bound, authoritative receipts, and a transport without hidden retries (`src/providers/adapter.ts`, FEASIBILITY.md). Ask the operator whether to:
+Next concrete task: the GitHub Copilot adapter (D016, D017; the operator chose Copilot first).
 
-- (a) research current official GitHub Copilot and ChatGPT/Codex documentation again for a hard per-request bound and per-request credit receipts, then prototype an adapter against a small explicit allocation with operator-provided credential files; or
-- (b) wait for provider-side changes.
+1. Read the installed pi-ai GitHub Copilot provider and auth code: `node_modules/@earendil-works/pi-ai/dist/providers/github-copilot*`, `dist/auth`, and the relevant `dist/api/*`. Establish:
+   - how OAuth device login and token refresh work, and how to keep the tokens in the subscription's `credentialFile` (`0600`, BoC-owned, never ambient);
+   - which API each Copilot model uses;
+   - whether `maxTokens` is honoured;
+   - which retries or fallbacks happen inside a stream call.
 
-Do not weaken the gate unilaterally. Offline work that can continue meanwhile:
+   Record the findings in FEASIBILITY.md.
+2. Implement `src/providers/github-copilot.ts`, a `ProviderAdapter` factory. It should:
+   - load credentials only from the configured file;
+   - build the provider's `ProviderStreams` without the ambient registry;
+   - pass an explicit output cap;
+   - use `createEstimatingMeter` (with a provider charge hook if Copilot exposes per-call credits);
+   - set `minimumAttemptCredits`.
 
-- hash-pinned `uv` in the image;
-- a Linux-host run of the executor probe;
-- final-day part 2 handling (needs the page structure verified manually by the operator, not fetched by BoC).
+   Test it offline with fake HTTP. It is not registered in `PRODUCTION_ADAPTERS` until after calibration.
+3. Add a `boc login <config> <subscription>` command for the minimal interactive OAuth device flow. It writes only the credential file and never prints tokens.
+4. Then ask the operator for the calibration run (FEASIBILITY.md "Calibration protocol") with a small allocation, current official Copilot per-token rates in the subscription's `estimate`, and ideally a provider-side budget.
 
-Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
+Do not begin live calls before the adapter is implemented and the operator has approved and set up the calibration run. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -230,3 +247,17 @@ Operator guide and drills verification (2026-09-27):
   - With per-puzzle limits of 1 credit, quota exhaustion falls over to the second subscription and no counter is exceeded.
   - A process killed mid-attempt resumes with the attempt recorded as interrupted, reuses the cached input, and records one submission.
 - `npm run check`: 122 offline tests passed.
+
+Best-effort limits verification (2026-09-27):
+
+- Operator decision recorded: best-effort limits, the proposed defaults, the provider cap recommended, Copilot first, and Anthropic added. REQUIREMENTS, AGENTS, README, FEASIBILITY, CONFIGURATION, OPERATOR, DECISIONS (D016, D017), and the example config are updated.
+- `npm run check`: 127 offline tests passed. New coverage:
+  - estimate padding, pricing input at the cache-write rate, and output-cap handling;
+  - charge source precedence (provider, then derived, then estimated) with receipts;
+  - a runaway stream cut off early, its upstream aborted and settled as estimated, and the guard still usable;
+  - per-pool tolerance blocking, including the default 5 % and a configured zero;
+  - other pools unaffected by an overshoot;
+  - subscriptions without an estimate not used;
+  - the provider-cap warning.
+
+  Existing guard, ledger, and selection tests were updated to the new semantics.

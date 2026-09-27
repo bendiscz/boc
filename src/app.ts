@@ -73,6 +73,11 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
   const factories = options.adapters ?? PRODUCTION_ADAPTERS;
   const adapters = new Map<string, ProviderAdapter>();
   for (const subscription of config.subscriptions) {
+    // Best-effort limits need an estimate (D016); without one the subscription cannot run.
+    if (!subscription.estimate) {
+      log(`subscription ${subscription.id}: no estimate configured; not used`);
+      continue;
+    }
     const adapter = await factories[subscription.provider]?.(subscription);
     if (adapter) {
       if (adapter.model.id !== subscription.model) {
@@ -83,8 +88,15 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
   }
   if (adapters.size === 0) {
     throw new AppError(
-      "No eligible provider adapter: live credit accounting is not validated for any configured subscription (see docs/FEASIBILITY.md).",
+      "No eligible provider adapter: no calibrated adapter exists for any configured subscription (see docs/FEASIBILITY.md).",
     );
+  }
+  for (const pool of config.creditPools) {
+    if (pool.providerCap !== "configured") {
+      log(
+        `warning: pool ${pool.id} has no provider-side spending cap; BoC limits are best effort and can be exceeded`,
+      );
+    }
   }
   if (!options.executor && !config.sandbox) {
     throw new AppError("Configure sandbox.image (see docs/SANDBOX.md).");

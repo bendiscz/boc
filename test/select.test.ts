@@ -81,5 +81,5 @@ test("selection prefers configured order, skips exhausted, ineligible, or unboun
     "puzzle counters are required",
   );
   await ledger.settle("r1", parseCredits("9"), "receipt:over");
-  assert.equal(pick(), undefined, "an unacknowledged overrun blocks every subscription");
+  assert.equal(pick(), "second", "excess 6.5 > tolerance 0.5 blocks only the copilot pool");
 });

@@ -32,6 +32,13 @@ export interface Reservation {
    * release the reservation: "not-dispatched" is advisory for later reconciliation.
    */
   abandon?(reason: "not-dispatched" | "outcome-uncertain"): Promise<void>;
+  /**
+   * Best-effort streaming cutoff (D016): true when the partial response's running
+   * cost estimate exceeds the reservation. The guard then aborts the request and
+   * calls `settleCutoff`; without it, the outcome is uncertain and stays held.
+   */
+  exceeds?(partial: AssistantMessage): boolean;
+  settleCutoff?(partial: AssistantMessage): Promise<void>;
 }
 
 export interface Admission {
@@ -180,40 +187,65 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
         signal?.throwIfAborted();
         if (faulted) throw new Error("Another request faulted while admission was pending.");
         dispatched = true;
+        // Internal controller so the guard itself can stop a runaway response.
+        const cutoff = new AbortController();
+        const forward = () => cutoff.abort(signal?.reason);
+        signal?.addEventListener("abort", forward, { once: true });
         const upstream = config.transport[mode](
           structuredClone(snapshot.model),
           structuredClone(snapshot.context),
-          { ...structuredClone(snapshot.options), ...(signal ? { signal } : {}) },
+          { ...structuredClone(snapshot.options), signal: cutoff.signal },
         );
         let started = false;
-        for await (const event of upstream) {
-          if (event.type === "done" || event.type === "error") {
-            const message = event.type === "done" ? event.message : event.error;
-            if (event.type === "done" && !started) throw new Error("Invalid stream protocol.");
-            // Aborted, deferred, or pending outcomes have unknown charge: never settle.
+        let partial: AssistantMessage | undefined;
+        try {
+          for await (const event of upstream) {
+            if (event.type === "done" || event.type === "error") {
+              const message = event.type === "done" ? event.message : event.error;
+              if (event.type === "done" && !started) throw new Error("Invalid stream protocol.");
+              // Aborted, deferred, or pending outcomes have unknown charge: never settle.
+              if (
+                message.stopReason === "aborted" ||
+                message.stopReason === "deferred" ||
+                message.stopReason === "pending" ||
+                signal?.aborted
+              ) {
+                throw new Error("Outcome is uncertain.");
+              }
+              // Do not expose terminal success (which enables tool execution) until
+              // settlement succeeds. Settlement failure keeps the reservation held.
+              settling = true;
+              await reservation.settle(structuredClone(message));
+              if (event.type === "error") {
+                output.push({ type: "error", reason: "error", error: failure(false) });
+              } else {
+                output.push(event);
+              }
+              output.end();
+              return;
+            }
+            if (event.type === "start") started = true;
+            else if (!started) throw new Error("Invalid stream protocol.");
+            partial = event.partial;
             if (
-              message.stopReason === "aborted" ||
-              message.stopReason === "deferred" ||
-              message.stopReason === "pending" ||
-              signal?.aborted
+              typeof reservation.exceeds === "function" &&
+              typeof reservation.settleCutoff === "function" &&
+              reservation.exceeds(structuredClone(partial))
             ) {
-              throw new Error("Outcome is uncertain.");
+              cutoff.abort(new Error("Credit estimate exceeded."));
+              settling = true;
+              // Settlement failure here falls through to the held/faulted path.
+              await reservation.settleCutoff(structuredClone(partial));
+              const stopped = failure(false);
+              stopped.errorMessage = "Response stopped: it exceeded its credit estimate.";
+              output.push({ type: "error", reason: "error", error: stopped });
+              output.end();
+              return;
             }
-            // Do not expose terminal success (which enables tool execution) until
-            // settlement succeeds. Settlement failure keeps the reservation held.
-            settling = true;
-            await reservation.settle(structuredClone(message));
-            if (event.type === "error") {
-              output.push({ type: "error", reason: "error", error: failure(false) });
-            } else {
-              output.push(event);
-            }
-            output.end();
-            return;
+            output.push(event);
           }
-          if (event.type === "start") started = true;
-          else if (!started) throw new Error("Invalid stream protocol.");
-          output.push(event);
+        } finally {
+          signal?.removeEventListener("abort", forward);
         }
         throw new Error("Transport ended without a terminal receipt.");
       } catch {

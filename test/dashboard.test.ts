@@ -101,7 +101,14 @@ test("the terminal view uses the alternate screen and restores the terminal on c
   const view = createTerminalView(fake, 0);
   const input = {
     state: { eventYear: 2025, puzzles: {}, submitNotBefore: undefined },
-    ledger: { eventYear: 2025, fault: undefined, pendingOverruns: [], held: [], counters: [] },
+    ledger: {
+      eventYear: 2025,
+      fault: undefined,
+      pendingOverruns: [],
+      overshoot: [],
+      held: [],
+      counters: [],
+    },
     current: undefined,
     events: ["synthetic event"],
     now: new Date("2025-12-01T00:00:00Z"),

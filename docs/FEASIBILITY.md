@@ -2,9 +2,9 @@
 
 Inspected on **2026-09-27**. This is a documentation/source review plus offline tests, not authenticated provider validation. No credentials were accessed and no live model or AoC requests were made by BoC. Rates and policies must be rechecked before enabling an adapter.
 
-## Decision: real subscription adapters remain disabled
+## Decision (updated by D016): best-effort adapters after calibration
 
-Both requested subscription paths are plausible, but neither has yet established the full hard-credit contract. Do not replace the requirement with a post-response soft cap. `src/providers/readiness.ts` reports both adapters as ineligible, with no configuration override.
+The hard-credit contract below was the original gate. Neither subscription met it. On 2026-09-27 the operator relaxed it to best-effort limits (D016): a padded estimate is reserved before each call, actual charges are recorded with their source, runaway responses are cut off, and the overshoot tolerance is bounded. An adapter becomes eligible once it exists and passes a supervised calibration run; see "Calibration protocol" below. No adapter exists yet, so `src/providers/readiness.ts` still reports every provider as ineligible. The evidence below explains why the limits are best effort and not guaranteed.
 
 | Provider | Established by current official documentation | Missing for BoC admission |
 | --- | --- | --- |
@@ -25,7 +25,15 @@ A conservative upper bound need not predict cost precisely: it may over-reserve.
 
 Directly fetched GitHub session limits, GitHub enterprise billing, and Codex pricing were checked again during parent synthesis. A delegated researcher inspected the other linked official sources. Some Business Help Center pages returned HTTP 403; this is an evidence gap, not proof of missing functionality. No production rate table is embedded in code.
 
-### Required evidence before live credit spending
+### Calibration protocol (D016)
+
+1. The operator provides a credential file for a small explicit allocation, preferably with a provider-side cap (for example, a GitHub user-level budget with usage stopping enabled).
+2. Configure the pool, the subscription `estimate` (current official per-token rates and the pricing label), and small limits.
+3. Run a few past puzzles with `boc run --days …` under supervision.
+4. Compare BoC's ledger (`boc status`, and the settle sources in the journal) with the provider's billing or usage report for the same period.
+5. The adapter passes if no single charge exceeded its estimate by more than the safety factor and the totals agree within 10 %. Record the result, rates, dates, and discrepancies here. Recheck before each event.
+
+### Original hard-ceiling evidence requirements (superseded by D016, kept for reference)
 
 - Authorized account/workspace and endpoint, permitted third-party use, current native-unit rate contract, and precise billed principal/pool.
 - Enforced upper bound covering input, output/reasoning, caches, model/tier selection, and any hidden billable work. Provider-side allocation can help only if its enforcement semantics meet the bound.

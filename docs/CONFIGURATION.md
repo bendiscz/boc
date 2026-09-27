@@ -29,9 +29,30 @@ Diagnostics intentionally do not echo input, unknown property names, JSON parser
 
 ## Credit pools and subscriptions
 
-Each pool has a unique `id`, a `provider` (`github-copilot` or `openai-codex`), an explicitly named native `unit`, and `limits`. Each subscription has a unique `id`, provider, credential-file path, model ID, `creditPool` reference, and its own `limits`.
+Each pool has a unique `id`, a `provider` (`github-copilot`, `openai-codex`, or `anthropic`), an explicitly named native `unit`, and `limits`. Each subscription has a unique `id`, provider, credential-file path, model ID, `creditPool` reference, and its own `limits`.
 
 Several subscriptions may share a pool only when they use the same provider and the same accounting unit/policy. Each subscription consumes both its own allocation and that pool's allocation. This allows a shared event ceiling with separate subscription sublimits. A pool cannot span providers; the example's Copilot and Codex pools are intentionally separate and have no summed credit total. A unit name is an accounting label, not proof of provider credit semantics.
+
+Limits are **best effort** (D016). Each pool may also set:
+
+- `overshootTolerance`: credits of unacknowledged excess over estimates tolerated before admission to that pool blocks. The default is 5 % of the event limit.
+- `providerCap`: `"configured"` if a provider-side spending cap backs the pool, otherwise `"none"` (the default), in which case every run warns.
+
+Each subscription needs an `estimate` block before it can run:
+
+```json
+"estimate": {
+  "pricing": "github-2026-09",
+  "rates": { "input": "300", "output": "1500", "cacheRead": "30", "cacheWrite": "375" },
+  "safetyFactor": "1.5",
+  "assumedMaxOutputTokens": 32000
+}
+```
+
+- `rates` are native credits per million tokens, taken from the provider's current official price list for the subscription's model. The values above are illustrative only.
+- `safetyFactor` (default `1.5`) pads every estimate.
+- `assumedMaxOutputTokens` (default 32000) is used when the provider does not enforce an output cap.
+- `pricing` labels the rate source and appears in the charge receipts.
 
 Every `limits` object contains:
 
@@ -40,7 +61,7 @@ Every `limits` object contains:
 
 `perPuzzle` must not exceed `event`. Zero means no admitted consumption, not unlimited. There are no implicit unlimited defaults. A subscription's allocation can exceed the shared pool's allocation: the smaller remaining allowance will control admission. Both limits must be satisfied, not selected as alternatives.
 
-For a request, the ledger (`src/budget/ledger.ts`, see D012) atomically checks **four counters**: subscription/event, subscription/puzzle, pool/event, and pool/puzzle. It reserves durably before dispatch, reconciles authoritative debits, and retains uncertain reservations across restarts. Overhead needs an explicit event allocation before it can be enabled. The configuration parser itself enforces none of this, and no real provider can currently be admitted because no certified credit meter exists.
+For a request, the ledger (`src/budget/ledger.ts`, see D012) atomically checks **four counters**: subscription/event, subscription/puzzle, pool/event, and pool/puzzle. It reserves the padded estimate durably before dispatch, records the actual charge with its source, and retains uncertain reservations across restarts. Overhead needs an explicit event allocation before it can be enabled. The configuration parser itself enforces none of this. No provider adapter exists yet (D016 requires calibration first).
 
 Credit amounts are **JSON strings**, not numbers. Accepted syntax is a non-negative ordinary decimal with at most 18 integer digits and 18 fractional digits; no exponent, sign, leading integer zeros, whitespace, or rounding. Internally values use `bigint` with a fixed 18-decimal scale. An adapter needing greater precision is unsupported until the representation is upgraded. Do not substitute estimated dollars, tokens, request counts, or usage percentages for native credits.
 

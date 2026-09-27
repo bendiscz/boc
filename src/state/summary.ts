@@ -51,8 +51,20 @@ export function renderEventSummary(state: RunState, ledger?: LedgerStatus): stri
 export function renderCredits(ledger: LedgerStatus, period?: PuzzleId): string[] {
   const lines = ["## Credits", ""];
   if (ledger.fault) lines.push(`**Ledger faulted:** ${ledger.fault}. Admission is blocked.`, "");
+  lines.push(
+    "Limits are best effort (D016): charges are estimated before each call and can exceed a limit by up to one call's excess plus the pool's overshoot tolerance.",
+    "",
+  );
   if (ledger.pendingOverruns.length > 0) {
     lines.push(`**Unacknowledged overruns:** ${ledger.pendingOverruns.map(cell).join(", ")}.`, "");
+  }
+  for (const o of ledger.overshoot) {
+    if (o.excess > 0n) {
+      lines.push(
+        `**Pool ${o.pool} overshoot:** ${formatCredits(o.excess)} of tolerance ${formatCredits(o.tolerance)}${o.blocking ? " — admission blocked until acknowledged" : ""}.`,
+        "",
+      );
+    }
   }
   lines.push(
     "Native units per pool; units from different pools are never summed.",

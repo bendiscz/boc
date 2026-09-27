@@ -48,3 +48,17 @@ export function subtractCredits(minuend: Credits, subtrahend: Credits): Credits 
   }
   return (minuend - subtrahend) as Credits;
 }
+
+/** Cost of `tokens` at `ratePerMillion` credits per 1,000,000 tokens, rounded up. */
+export function tokenCost(ratePerMillion: Credits, tokens: number): Credits {
+  if (!Number.isSafeInteger(tokens) || tokens < 0) throw new Error("Invalid token count.");
+  const numerator = ratePerMillion * BigInt(tokens);
+  const cost = (numerator + 999_999n) / 1_000_000n;
+  return addCredits(cost as Credits);
+}
+
+/** Multiply by a non-negative decimal factor (parsed like credits), rounded up. */
+export function scaleCredits(amount: Credits, factor: Credits): Credits {
+  const product = amount * factor;
+  return addCredits(((product + SCALE - 1n) / SCALE) as Credits);
+}

@@ -70,8 +70,12 @@ export function renderDashboard(input: DashboardInput, width = 100, recent = 8):
     lines.push(`Answer cooldown until ${input.state.submitNotBefore}`);
   }
   if (input.ledger.fault) lines.push(`LEDGER FAULTED (${input.ledger.fault}): admission blocked`);
-  if (input.ledger.pendingOverruns.length > 0) {
-    lines.push(`UNACKNOWLEDGED OVERRUNS: ${input.ledger.pendingOverruns.join(", ")}`);
+  for (const o of input.ledger.overshoot) {
+    if (o.excess > 0n) {
+      lines.push(
+        `${o.blocking ? "BLOCKED: " : ""}pool ${o.pool} overshoot ${formatCredits(o.excess)} of tolerance ${formatCredits(o.tolerance)}`,
+      );
+    }
   }
   lines.push("", "Credits (native units per pool; never summed across pools)");
   for (const scope of ["pool", "subscription"] as const) {

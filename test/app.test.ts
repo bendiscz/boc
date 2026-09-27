@@ -44,6 +44,10 @@ async function setup(t: test.TestContext, start: string) {
         model: FAKE_MODEL.id,
         creditPool: "pool",
         limits: { event: "100", perPuzzle: "20" },
+        estimate: {
+          pricing: "synthetic",
+          rates: { input: "1", output: "1", cacheRead: "1", cacheWrite: "1" },
+        },
       },
     ],
   });
@@ -210,4 +214,20 @@ test("an abort while waiting stops cleanly and leaves resumable state", async (t
   f.released.add(1);
   const results = await f.run({ days: [1] });
   assert.equal(results[0]?.part1, "solved", "locks were released; the run resumes");
+});
+
+test("subscriptions without an estimate are not used; missing provider caps are warned about", async (t) => {
+  const f = await setup(t, "2026-01-01T00:00:00.000Z");
+  const events: string[] = [];
+  const withoutEstimate = structuredClone(f.config);
+  for (const s of withoutEstimate.subscriptions) delete s.estimate;
+  await assert.rejects(
+    f.run({ config: withoutEstimate, onEvent: (e) => events.push(e) }),
+    /No eligible provider adapter/,
+  );
+  assert.ok(events.some((e) => /sub: no estimate configured/.test(e)));
+  f.released.add(1);
+  const warned: string[] = [];
+  await f.run({ days: [1], onEvent: (e) => warned.push(e) });
+  assert.ok(warned.some((e) => /pool pool has no provider-side spending cap/.test(e)));
 });

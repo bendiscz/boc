@@ -25,10 +25,12 @@ export interface SelectionOptions {
 }
 
 export function selectSubscription(options: SelectionOptions): string | undefined {
-  // A faulted ledger or unacknowledged overrun blocks all admission anyway.
-  if (options.ledger.fault || options.ledger.pendingOverruns.length > 0) return undefined;
+  // A faulted ledger blocks all admission; excess overshoot blocks its pool.
+  if (options.ledger.fault) return undefined;
+  const blocked = new Set(options.ledger.overshoot.filter((o) => o.blocking).map((o) => o.pool));
   for (const subscription of options.config.subscriptions) {
     if (options.exclude?.has(subscription.id) || !options.eligible(subscription.id)) continue;
+    if (blocked.has(subscription.creditPool)) continue;
     const minimum = options.minimum(subscription.id);
     // Unknown cost bound: not selectable (never treat unknown as zero).
     if (minimum === undefined || minimum <= 0n) continue;

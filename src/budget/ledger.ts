@@ -87,6 +87,8 @@ const recordSchema = z.discriminatedUnion("type", [
     id: reservationId,
     actual: amount,
     evidence,
+    /** How the charge was established (D016); absent in older records means "provider". */
+    source: z.enum(["provider", "derived", "estimated", "operator"]).optional(),
   }),
   z.strictObject({ ...base, type: z.literal("uncertain"), id: reservationId, reason: identifier }),
   z.strictObject({ ...base, type: z.literal("acknowledge"), id: reservationId, note: identifier }),
@@ -125,10 +127,22 @@ export interface CounterStatus {
   readonly exceeded: boolean;
 }
 
+export type ChargeSource = "provider" | "derived" | "estimated" | "operator";
+
+export interface PoolOvershoot {
+  readonly pool: string;
+  readonly excess: Credits;
+  readonly tolerance: Credits;
+  readonly blocking: boolean;
+}
+
 export interface LedgerStatus {
   readonly eventYear: number;
   readonly fault: string | undefined;
+  /** Unacknowledged overruns (actual above the reserved estimate). */
   readonly pendingOverruns: readonly string[];
+  /** Per-pool unacknowledged excess versus tolerance; blocking pools deny admission. */
+  readonly overshoot: readonly PoolOvershoot[];
   readonly held: readonly HeldReservation[];
   readonly counters: readonly CounterStatus[];
 }
@@ -199,7 +213,9 @@ export class CreditLedger {
   readonly #reserved = new Map<string, Credits>();
   readonly #held = new Map<string, Held>();
   readonly #known = new Set<string>();
-  readonly #pendingOverruns = new Set<string>();
+  /** Unacknowledged overruns: reservation id → pool and excess above the estimate. */
+  readonly #pendingOverruns = new Map<string, { pool: string; excess: Credits }>();
+  readonly #tolerance = new Map<string, Credits>();
   readonly #puzzles = new Set<PuzzleId>();
   #journal: Journal<LedgerRecord> | undefined;
 
@@ -211,6 +227,13 @@ export class CreditLedger {
     });
     for (const pool of options.config.creditPools) {
       this.#poolLimits.set(pool.id, limits(pool.limits));
+      // Default tolerance: 5% of the pool's event limit (D016).
+      this.#tolerance.set(
+        pool.id,
+        pool.overshootTolerance !== undefined
+          ? parseCredits(pool.overshootTolerance)
+          : (((parseCredits(pool.limits.event) * 5n) / 100n) as Credits),
+      );
     }
     for (const subscription of options.config.subscriptions) {
       this.#subscriptionLimits.set(subscription.id, limits(subscription.limits));
@@ -353,7 +376,12 @@ export class CreditLedger {
       this.#spent.set(key, addCredits(get(this.#spent, key), actual));
     }
     this.#held.delete(held.id);
-    if (actual > held.amount) this.#pendingOverruns.add(held.id);
+    if (actual > held.amount) {
+      this.#pendingOverruns.set(held.id, {
+        pool: held.pool,
+        excess: subtractCredits(actual, held.amount),
+      });
+    }
   }
 
   #append(body: RecordBody): Promise<LedgerRecord> {
@@ -378,11 +406,11 @@ export class CreditLedger {
         throw invalid();
       }
       if (!isCredits(input.amount) || input.amount <= 0n) throw invalid();
-      if (this.#pendingOverruns.size > 0) {
-        throw new LedgerError("denied", "An unacknowledged credit overrun blocks admission.");
-      }
       const subscription = this.#config.subscriptions.find((s) => s.id === input.subscription);
       const pool = this.#config.creditPools.find((p) => p.id === subscription?.creditPool);
+      if (pool && this.#poolExcess(pool.id) > (this.#tolerance.get(pool.id) ?? ZERO_CREDITS)) {
+        throw new LedgerError("denied", "Unacknowledged overshoot exceeds the pool tolerance.");
+      }
       const subscriptionLimits = this.#subscriptionLimits.get(input.subscription);
       const poolLimits = pool && this.#poolLimits.get(pool.id);
       if (!subscription || !pool || !subscriptionLimits || !poolLimits) throw invalid();
@@ -431,18 +459,38 @@ export class CreditLedger {
   }
 
   /**
-   * Record an authoritative actual charge. Actual may exceed the reservation (the
-   * bound was wrong): it is recorded truthfully and blocks admission until acknowledged.
+   * Record the actual charge and how it was established. Actual may exceed the
+   * reserved estimate: it is recorded truthfully, and admission to that pool blocks
+   * once its unacknowledged excess exceeds the pool's tolerance (best effort, D016).
    */
-  settle(id: string, actual: Credits, receipt: string): Promise<void> {
+  settle(
+    id: string,
+    actual: Credits,
+    receipt: string,
+    source: ChargeSource = "provider",
+  ): Promise<void> {
     return this.#serialize(async () => {
       const held = this.#held.get(id);
       if (!held || !isCredits(actual) || !evidence.safeParse(receipt).success) {
         throw new LedgerError("invalid", "Invalid settlement.");
       }
-      await this.#append({ type: "settle", id, actual: formatCredits(actual), evidence: receipt });
+      await this.#append({
+        type: "settle",
+        id,
+        actual: formatCredits(actual),
+        evidence: receipt,
+        source,
+      });
       this.#applySettle(held, actual);
     });
+  }
+
+  #poolExcess(pool: string): Credits {
+    let total = ZERO_CREDITS;
+    for (const overrun of this.#pendingOverruns.values()) {
+      if (overrun.pool === pool) total = addCredits(total, overrun.excess);
+    }
+    return total;
   }
 
   /** Annotate a held reservation whose outcome is unknown. It stays held. */
@@ -507,7 +555,12 @@ export class CreditLedger {
     return {
       eventYear: this.#config.event.year,
       fault: this.#journal?.faulted ? "journal-write-failed" : undefined,
-      pendingOverruns: [...this.#pendingOverruns],
+      pendingOverruns: [...this.#pendingOverruns.keys()],
+      overshoot: this.#config.creditPools.map((pool) => {
+        const excess = this.#poolExcess(pool.id);
+        const tolerance = this.#tolerance.get(pool.id) ?? ZERO_CREDITS;
+        return { pool: pool.id, excess, tolerance, blocking: excess > tolerance };
+      }),
       held: [...this.#held.values()].map((held) => ({
         id: held.id,
         subscription: held.subscription,

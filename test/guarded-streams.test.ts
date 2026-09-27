@@ -339,6 +339,10 @@ test("request-rewriting options are dropped; admission and transport see the sam
   const stream = f.guard.stream(FAKE_MODEL, context(), rewriting as never);
   headers["x-auth"] = "mutated";
   assert.equal((await stream.result()).stopReason, "stop");
+  // The transport always receives the guard's own abort signal (streaming cutoff).
+  const { signal, ...rest } = sent as { signal?: unknown };
+  assert.ok(signal instanceof AbortSignal);
+  sent = rest;
   assert.deepEqual(sent, admitted);
   assert.deepEqual(sent, {
     transport: "sse",

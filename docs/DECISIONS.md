@@ -6,7 +6,7 @@ The operator requested feasibility assessment, a context/bootstrap commit, remov
 
 The original instructions are in commit `f9dc772`. Requirements and clarifications now live in `REQUIREMENTS.md`; ongoing work is tracked in `PLAN.md`.
 
-## D002 — Credits are the sole budget metric
+## D002 — Credits are the sole budget metric (hard-ceiling part superseded by D016)
 
 The operator clarified that limits are configurable per puzzle and event, may differ by subscription, and must account for AI credits spent. BoC should use all available subscriptions effectively.
 
@@ -97,3 +97,23 @@ This resolves the `ModelRuntime` question in FEASIBILITY.md. The solver uses `pi
 `@earendil-works/pi-agent-core@0.87.1` is now a direct dependency, and it deduplicates with the direct `pi-ai`. `pi-coding-agent` remains a dependency for the existing admission-boundary tests and settings/resources helpers. It is not used by the solver and may be removed later. The test-only `ModelRuntime` facade cast must not be used in production.
 
 Solver tools (`src/solver/tools.ts`) are exactly `write_file`, `read_file`, `list_files`, `run`, and `propose_answer`. File tools reach only the host-side attempt workspace. `run` reaches only the networkless executor. `propose_answer` validates the answer and hands it to the orchestrator, which alone decides whether to submit.
+
+## D016 — Best-effort credit limits with estimated reservations
+
+On 2026-09-27 the operator relaxed the hard-ceiling requirement. BoC does not guarantee that credit limits are never exceeded, but it tries to match them as exactly as practical. The operator accepted these defaults: safety factor 1.5, overshoot tolerance 5 % of the pool's event limit, calibration tolerance 10 %, and a provider-side cap recommended rather than required. GitHub Copilot comes first.
+
+What stays the same: durable atomic reservations against all four counters before every dispatch, held unknown outcomes, restart safety, separate native units, one dispatch path through the guard, and no unaccounted calls.
+
+What changes:
+
+- **Estimated reservation.** `src/budget/estimate.ts` estimates each call conservatively. Input tokens are estimated as request bytes / 3 plus 1000, and priced at the higher of the input and cache-write rates. Output tokens are taken at the provider-enforced cap, or at the configured `assumedMaxOutputTokens` when the provider ignores caps. The total uses the configured rates per million tokens and is multiplied by the safety factor. Subscriptions need an `estimate` block, otherwise they are not used. Zero or unknown rates are refused.
+- **Actual charge with a source label.** The charge is the provider-reported figure (`provider`) if available, otherwise one derived from reported token usage (`derived`), otherwise the estimate itself (`estimated`). Operators can settle held reservations (`operator`).
+- **Overshoot bound.** A charge above its estimate is recorded truthfully. Admission to that pool blocks only once the pool's unacknowledged excess exceeds `overshootTolerance` (default 5 % of the event limit). Other pools are unaffected. Acknowledging clears that entry's contribution.
+- **Streaming cutoff.** The guard aborts a response whose running estimate exceeds its reservation, and settles it as `estimated` at the larger of the running estimate and the reservation. This is not a fault, so the guard stays usable.
+- **Provider cap.** `providerCap: "configured"` records that a provider-side cap backs the pool. Otherwise every run warns.
+- **Worst case per limit.** The limit, plus one call's excess over its estimate, plus the tolerance. Status views state that limits are best effort.
+- **Eligibility.** An adapter is used only after a supervised calibration run with a small explicit allocation. It passes if no single charge exceeds its estimate by more than the safety factor, and BoC's total is within 10 % of the provider's billed total. The results are recorded in FEASIBILITY.md.
+
+## D017 — Anthropic as a third provider
+
+On 2026-09-27 the operator added Anthropic as a supported LLM provider (`provider: "anthropic"`). The native unit is the operator's billing unit, typically USD for the API. Pi 0.87.1 ships an Anthropic provider. Its details are verified when its adapter is built, and it follows D016 like the others. Unverified expectations to check then: whether the Messages API enforces `max_tokens`, and whether responses report input, output, and cache token usage. If both hold, estimates from published per-token prices can be accurate. Anthropic comes after GitHub Copilot.
