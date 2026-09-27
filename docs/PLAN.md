@@ -3,7 +3,8 @@
 ## Current state
 
 - Documentation-only bootstrap; no implementation or test suite yet.
-- Repository: `https://github.com/bendiscz/boc.git`, branch `master`.
+- Repository: `https://github.com/bendiscz/boc.git`, branch `main`.
+- Bootstrap commit: `676e152`. The initial checkout used `master`; GitHub's default branch is `main`, so ongoing development follows `main`.
 - The operator clarified credit-only budgets, multiple subscriptions, runtime prohibition on retrieving solutions, and an AI/bot-permitted private leaderboard.
 - No BoC provider credentials or AoC cookie have been requested or used. No live puzzle was fetched or answer submitted.
 - Feasibility inspection found Node.js `v24.21.0`, npm `11.19.0`, and Pi `0.87.1` in the development environment. These are observations, not selected support versions.
