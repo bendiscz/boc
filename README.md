@@ -19,7 +19,7 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 ## Status
 
-The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, and offline tests. Live solving, provider requests, AoC access, and the TUI are not implemented yet. Both subscription adapters remain disabled pending enforceable credit accounting.
+The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an offline-tested AoC transport (no live AoC access yet), and offline tests. Live solving, provider requests, AoC access, and the TUI are not implemented yet. Both subscription adapters remain disabled pending enforceable credit accounting.
 
 Requires Node.js 24.21+ within the 24 LTS line and npm:
 
@@ -34,6 +34,7 @@ Configuration checking reads no credentials and makes no network requests. Examp
 
 - [Configuration reference](docs/CONFIGURATION.md)
 - [Provider, Pi, and isolation feasibility findings](docs/FEASIBILITY.md)
+- [AoC access and site conduct](docs/AOC.md)
 - [Requirements and acceptance criteria](docs/REQUIREMENTS.md)
 - [Development plan and handoff](docs/PLAN.md)
 - [Decisions and feasibility notes](docs/DECISIONS.md)

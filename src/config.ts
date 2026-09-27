@@ -28,7 +28,15 @@ const configSchema = z
     version: z.literal(1),
     event: z.strictObject({ year: z.number().int().min(2015).max(9999) }),
     storageDir: filePath,
-    aoc: z.strictObject({ sessionCookieFile: filePath }),
+    aoc: z.strictObject({
+      sessionCookieFile: filePath,
+      /** Operator contact for the AoC User-Agent (email or URL). Required for live access. */
+      contact: z
+        .string()
+        .regex(/^[\x21-\x7e][\x20-\x7e]{0,199}(?![\s\S])/)
+        .refine((value) => !/[;()]/.test(value))
+        .optional(),
+    }),
     creditPools: z
       .array(
         z.strictObject({

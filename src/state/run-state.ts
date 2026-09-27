@@ -22,7 +22,7 @@ import { Journal, JournalError } from "./journal.ts";
  *           (budget-exhausted)──▶ gave-up
  *   proposed ──submission-started (write-ahead, before HTTP)──▶ submitting
  *   submitting ──correct──▶ solved; incorrect/too-high/too-low──▶ ready;
- *              cooldown (not judged)──▶ proposed; uncertain──▶ uncertain
+ *              cooldown/not-sent (not judged)──▶ proposed; uncertain──▶ uncertain
  *   uncertain ──reconciled(correct)──▶ solved; (not-correct)──▶ ready
  *   proposed ──proposal-discarded (e.g. blocked duplicate)──▶ ready
  *   ready|proposed ──gave-up──▶ gave-up
@@ -46,7 +46,21 @@ export type PartStatus =
   | "solved"
   | "gave-up";
 
-export type Verdict = "correct" | "incorrect" | "too-high" | "too-low" | "cooldown" | "uncertain";
+/**
+ * `cooldown`: the server refused to judge. `not-sent`: the client failed before
+ * dispatch (proven locally), so the answer was not judged either. Both return the
+ * part to `proposed` and do not count as a judged answer.
+ */
+export type Verdict =
+  | "correct"
+  | "incorrect"
+  | "too-high"
+  | "too-low"
+  | "cooldown"
+  | "not-sent"
+  | "uncertain";
+
+const UNJUDGED: readonly string[] = ["cooldown", "not-sent"];
 
 export interface SubmissionState {
   readonly submission: number;
@@ -132,7 +146,15 @@ const recordSchema = z.discriminatedUnion("type", [
     type: z.literal("submission-finished"),
     ...where,
     submission: sequence,
-    verdict: z.enum(["correct", "incorrect", "too-high", "too-low", "cooldown", "uncertain"]),
+    verdict: z.enum([
+      "correct",
+      "incorrect",
+      "too-high",
+      "too-low",
+      "cooldown",
+      "not-sent",
+      "uncertain",
+    ]),
     retryAfter: z.iso.datetime().optional(),
     reason: reason.optional(),
   }),
@@ -187,7 +209,7 @@ export function submissionBlocker(
   const partState = state.puzzles[puzzleId]?.parts[partNumber];
   if (!partState || partState.status !== "proposed") return "part-not-proposed";
   if (partState.proposed?.answer !== candidate) return "answer-not-proposed";
-  if (partState.submissions.some((s) => s.answer === candidate && s.verdict !== "cooldown")) {
+  if (partState.submissions.some((s) => s.answer === candidate && !UNJUDGED.includes(s.verdict))) {
     return "duplicate-answer";
   }
   if (isInteger(candidate)) {
@@ -310,6 +332,7 @@ export function transition(state: RunState, record: RunRecord): RunState {
           next.proposed = undefined;
           break;
         case "cooldown":
+        case "not-sent":
           next.status = "proposed";
           break;
         case "uncertain":

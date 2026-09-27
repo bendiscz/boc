@@ -2,7 +2,10 @@
   "version": 1,
   "event": { "year": 2026 },
   "storageDir": "../var",
-  "aoc": { "sessionCookieFile": "../.secrets/aoc-session" },
+  "aoc": {
+    "sessionCookieFile": "../.secrets/aoc-session",
+    "contact": "replace-with-operator-email@example.invalid"
+  },
   "creditPools": [
     {
       "id": "copilot-pool",

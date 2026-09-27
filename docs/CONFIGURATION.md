@@ -17,7 +17,8 @@ See [`examples/boc.config.json`](../examples/boc.config.json). It contains synth
 - `version`: exactly `1`; unknown properties are rejected throughout.
 - `event.year`: integer from 2015 to 9999. This identifies accounting scope; it does not establish an event's dates or day count.
 - `storageDir`: private runtime artifact directory.
-- `aoc.sessionCookieFile`: path to an externally supplied cookie file.
+- `aoc.sessionCookieFile`: path to an externally supplied cookie file (owner-only permissions required when used).
+- `aoc.contact` (optional for validation, required by the AoC client): operator contact placed in the `User-Agent`, e.g. an email address; printable ASCII without `;`, `(`, or `)`.
 - `creditPools`: one or more native-unit aggregate allocations.
 - `subscriptions`: one or more explicitly identified provider subscriptions.
 

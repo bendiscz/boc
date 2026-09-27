@@ -3,6 +3,7 @@
 ## Current state
 
 - Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
+- Offline AoC transport (D014, `AOC.md`): pinned-host cookie-file client, conservative response parsers, release calendar, and a cached, write-ahead submission service, tested only with fake transports and synthetic HTML.
 - Durable run-state journal with a validated puzzle/part state machine, private artifact layout, derived Markdown views, and `status`/`views`/`ledger` CLI commands (D013).
 - Durable four-counter credit ledger (`src/budget/ledger.ts`) and ledger-backed `Admission` (`src/budget/admission.ts`) implemented and tested offline with fake providers; see D012. No production `CreditMeter` exists, so nothing can be admitted for a real provider.
 - No live provider adapter, AoC client, solver, or TUI yet. Both real providers are deliberately ineligible for chargeable work; see `FEASIBILITY.md`.
@@ -18,7 +19,9 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: milestone 3 — AoC transport, offline only. First recheck the current AoC About/FAQ and any automation guidance (User-Agent, request rate) with a documentation fetch — not puzzle pages or solutions — and record it. Then implement `src/aoc/client.ts`: cookie read from the configured private file (permission check, never logged), host pinned to `adventofcode.com` over HTTPS, identifiable User-Agent, timeouts, minimum request spacing, redirects not followed, sanitized errors; cached puzzle/input downloads written through `layout.ts` and recorded as `statement-fetched`/`input-fetched`; answer-response parsing mapped onto run-state verdicts (correct, incorrect, too high/low, wait-time → `retryAfter`, wrong level/already solved → `uncertain`), with unknown responses treated as `uncertain`. Use only synthetic HTML fixtures and a fake `fetch`; no live AoC access until milestone 6. Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
+Next concrete task: milestone 4. First decide the `ModelRuntime` integration (FEASIBILITY.md: upstream injection point, audited facade, or a BoC-owned loop over `pi-agent-core`). Read the installed Pi SDK docs again for this and record the choice as a decision. Then build the solver executor from D010: a digest-pinned toolchain image definition (Python/uv, Node.js, Go, Rust), a networkless per-attempt container runner with resource limits, bounded output, and artifact export into `layout.attempt(...)`. Next come constrained solver tools (write file, run program, read allowed files) that only reach that executor, and a solve-loop skeleton driving `RunStore` and `AocService` with fake model/AoC transports. Operator question outstanding before live AoC use: the request-rate interpretation in `AOC.md`.
+
+Do not begin live calls while either eligibility gate is unresolved. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -43,10 +46,10 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 ### 3. AoC transport and scheduling
 
-- [ ] Implement a trusted cookie-file client with host restrictions, redacted errors, caching, timeouts, and polite request scheduling.
-- [ ] Parse puzzle/answer responses and handle authentication failures, part unlocks, cooldowns, duplicates, and ambiguous submissions.
-- [ ] Implement past-puzzle mode and release waiting with verified calendar rules and a fake clock for tests.
-- [ ] Use only synthetic fixtures in committed tests.
+- [x] Implement a trusted cookie-file client with host restrictions, redacted errors, caching, timeouts, and polite request scheduling. (Rate interpretation awaits operator confirmation; see AOC.md.)
+- [x] Parse puzzle/answer responses and handle authentication failures, part unlocks, cooldowns, duplicates, and ambiguous submissions. (Wording unvalidated against live responses; final-day part 2 outstanding.)
+- [x] Implement past-puzzle mode and release waiting with verified calendar rules and a fake clock for tests. (`isReleased`/`waitForRelease`; day selection is done by the milestone 4 run loop.)
+- [x] Use only synthetic fixtures in committed tests.
 
 ### 4. Solver and subscription orchestration
 
@@ -120,3 +123,12 @@ Run-state and artifact verification (2026-09-27):
 - `npm run check` — lint, type checks, 77 offline tests, and build passed. New coverage: two-part lifecycle, forbidden transitions writing nothing, duplicate/bounded/cooldown-blocked submissions, cooldown-verdict resubmission after the embargo, crash during submission → `uncertain` and no retry, interrupted attempts, replay of an impossible journal and wrong event refused, layout paths, atomic view writes with private modes and Markdown escaping, lock-free status, CLI settle refused while the ledger is locked and requiring an `operator:` receipt.
 - Independent review (child Pi, read-only): `writeViews` now tolerates a missing `runs/` directory (not reachable via the current write order, but hardened); `boc status` now uses the unified summary renderer; D012 lock name corrected. Not changed: a directory fsync after torn-tail truncation (truncation is file metadata, covered by the file fsync); the `as never` cast in `RunStore.record` (records are schema-validated at runtime before append).
 - No live provider or AoC activity.
+
+AoC transport verification (2026-09-27):
+
+- Documentation recheck only: fetched the AoC About/FAQ directly. Automation guidance came from search-result excerpts of the site author's subreddit posts; the pages themselves could not be rendered. No puzzle, input, or solution content was fetched; BoC made no AoC request. Findings are in `AOC.md`.
+- `npm run check` — lint, type checks, 86 offline tests, and build passed. New coverage: verdict and wait parsing, including defaults and unrecognized responses; puzzle-page parsing; release times and sleep-based waiting; host pinning, User-Agent, cookie header, form encoding, manual redirects, request spacing and serialization; typed sanitized errors that never contain the cookie; unsafe cookie files and missing contact refused; oversized responses; cached downloads; too-high embargo; part 2 unlocking; timeout → uncertain → read-only reconciliation (still-uncertain, conflicting answer, not-correct, correct); crash adoption of atomically written files; and the pre-dispatch not-sent path.
+- Independent review (child Pi, read-only):
+  - Fixed: pre-dispatch failures no longer strand submissions as `uncertain`. There is a cookie preflight before the write-ahead record, plus a new `not-sent` verdict for proven non-dispatch.
+  - Fixed: wait clauses are no longer cut at periods.
+  - Recorded, not changed: reconciliation's `not-correct` may block an answer the server never judged (errs toward no duplicates), the POSIX-only cookie permission check (the orchestrator targets POSIX hosts), and final-day handling.
