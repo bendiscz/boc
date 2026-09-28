@@ -25,7 +25,6 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGEN
 
 Next concrete task: **to be decided with the operator.** The event config exists (`var/event-2026.config.json`). Candidates:
 
-- a supervised smoke replay of the combined config (a 2025 copy, one past day) to confirm that both adapters load together, both start checks pass, and Copilot is chosen first. It costs a few model credits and makes no AoC submissions.
 - an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
 - live failure drills via replay (milestone 7).
 
@@ -348,3 +347,8 @@ Operator alerts (D023, 2026-09-28):
 - `src/alerts/notifier.ts` handles ntfy pushes and healthchecks.io pings from private files, and `boc alert-test` sends a test push and ping.
 - Wired into the run: failed checks, failover, day summaries, stops, and errors, including preflight errors, which now alert too because the notifier is created first. Replay is silent.
 - `npm run check`: 166 offline tests passed. New tests: file and URL validation; request format with title sanitizing, priority, and token; heartbeat URLs; deduplication and the rate limit with the suppressed notice; delivery failures logged without the destination; bounded flush; and run-level alerts for check failure, day summaries, failover, and a preflight error. Not live-tested.
+
+Combined-config smoke test (live, 2026-09-28, with the operator's go-ahead):
+
+- `replay var/smoke-2025.config.json` (a 2025 copy of the event config with storage `var/bench/smoke-2025`) on day 1. Both adapters loaded, and the start check passed: both credential files were rewritten by the forced refresh. Copilot was chosen first and solved both parts on the first submission (8.6 s and 15.1 s) for 2.04 AI credits; Codex spent 0.
+- Not covered: the AoC `/settings` check (replay never contacts AoC; verified separately) and alert delivery (replay is silent; `boc alert-test` passed).
