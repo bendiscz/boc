@@ -1,44 +1,35 @@
 # Development plan and session handoff
 
-## Current state
+## Current state (2026-09-28)
 
-- Offline foundation implemented: strict versioned configuration, exact credit amounts, a configuration-checking CLI, restrictive Pi settings, explicit resources, a guarded provider-stream admission boundary proven with a fake-provider `AgentSession`, 46 offline tests, build/lint/type checks, and credential-free CI (passing on GitHub).
-- Terminal dashboard (`--tui`, alternate screen, throttled), private `events.log`, and the operator override `boc submission not-judged` (it only unblocks an answer; it never resubmits).
-- `boc run <config> [--days ...]` (`src/app.ts`):
-  - It fails closed before any storage, ledger, or AoC access, because the production adapter registry is intentionally empty.
-  - It sleeps until each release, retries unlock a bounded number of times, and never refetches solved days.
-  - It stops the run on a provider fault.
-  - Ctrl-C stops gracefully (exit code 130) and the run can be resumed.
-- Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
-- Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
-- **Codex calibration passed (2026-09-27):** 14 calls, 1.54198 credits charged, max actual/estimate 0.035, and token totals exactly equal to the Codex dashboard (27354). The dashboard showed 0 credits because the usage was included in the plan. Codex is in `PRODUCTION_ADAPTERS` (D019; shares `oauth-adapter.ts` with Copilot). Anthropic is deferred: the policy forbids subscription OAuth, and there is no API key yet.
-- **Copilot calibration passed (2026-09-27):** 15 calls, 4.54678 credits charged versus 4.55 reported by GitHub, max actual/estimate 0.026. AoC 2025 days 1–2 were fully solved. The Copilot adapter is now in `PRODUCTION_ADAPTERS`.
-- GitHub Copilot adapter (`src/providers/github-copilot.ts`): credential file only, token refresh, output cap, and charges derived from usage. Plus `boc login`, calibration-only registration (`run --calibrate`), and `boc calibration-report` (D018). Not yet used live.
-- Best-effort credit limits (D016):
-  - estimated, padded reservations from per-subscription rates;
-  - charge source labels (provider, derived, estimated, operator);
-  - a per-pool overshoot tolerance (default 5 %) that replaces the global overrun block;
-  - a streaming cutoff that settles as an estimate without faulting;
-  - warnings about missing provider-side caps.
-
-  Anthropic is now a third provider (D017).
-- Offline AoC transport (D014, `AOC.md`): pinned-host cookie-file client, conservative response parsers, release calendar, and a cached, write-ahead submission service, tested only with fake transports and synthetic HTML.
-- Durable run-state journal with a validated puzzle/part state machine, private artifact layout, derived Markdown views, and `status`/`views`/`ledger` CLI commands (D013).
-- Durable four-counter credit ledger (`src/budget/ledger.ts`) and ledger-backed `Admission` (`src/budget/admission.ts`) implemented and tested offline with fake providers; see D012. No production `CreditMeter` exists, so nothing can be admitted for a real provider.
-- No live provider adapter, AoC client, solver, or TUI yet. Both real providers are deliberately ineligible for chargeable work; see `FEASIBILITY.md`.
-- A synthetic Docker isolation probe passed locally; production execution and dependency acquisition remain unimplemented.
-- Repository: `https://github.com/bendiscz/boc.git`, branch `main`.
-- Only branch: `main` (`master` deleted). History was rewritten once on operator request to set the author to Martin Benda <martin@bendovi.cz>, configured locally for this repository.
-- The operator clarified credit-only budgets, multiple subscriptions, runtime prohibition on retrieving solutions, and an AI/bot-permitted private leaderboard.
-- No BoC provider credentials or AoC cookie have been requested or used. No live puzzle was fetched or answer submitted.
-- Selected Node.js 24 LTS (minimum/tested 24.21.0) and pinned Pi family 0.87.1, TypeScript 6.0.3, Biome 2.5.14, and Zod 4.6.5. npm `11.19.0` was used locally. Dependencies and lockfile are committed; lifecycle scripts are disabled.
-- Original `init.md` is replaced by the English project documentation and retained in Git history.
+- **Working end to end.** `boc run` waits for releases (or takes `--days`), fetches and caches the puzzle and input, and solves with a ledger-admitted, constrained agent loop (`pi-agent-core`, D015). Generated code runs in networkless Docker containers (`sandbox/Dockerfile`, image `boc-solver:dev` built locally). The run then submits with write-ahead records and continues to part 2. Other features: `--tui`, `status`, `views`, `events.log`, and the ledger and submission operator commands.
+- **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance.
+- **Providers:**
+  - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md has both results).
+  - Anthropic is deferred (D019): the policy forbids subscription OAuth, and there is no API key.
+- **AoC account.** AoC 2025 days 1–4 are solved on the dedicated account: days 1–2 via Copilot, days 3–4 via Codex. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
+- **Private local setup** (ignored by Git):
+  - credentials in `.secrets/`: the AoC cookie, `copilot.json`, and `codex.json`;
+  - `var/calibration.config.json` (Copilot, `gpt-6-sol`) and `var/calibration-codex.config.json` (Codex, `gpt-6-sol`), each for event 2025 with its own storage directory.
+- **Allowance** (the operator confirmed on 2026-09-28 to keep it): each config allows 300 credits per event and 100 per puzzle in its native unit.
+  - Copilot has spent 4.55 of 300 AI credits.
+  - Codex has spent 1.54 of 300 Codex credits.
+  - No provider-side caps are configured.
+- **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`.
+- **Checks.** `npm run check`: 141 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
-Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
+Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: a longer supervised rehearsal (milestone 6, "evaluate representative older puzzles"), with the operator's approval and allowance. Run both calibrated providers on more AoC 2025 days (5 onward) and record correctness, credits, latency, and failure modes in a private evaluation note. Commit only aggregate, puzzle-free findings. Turn defects into synthetic regression tests (milestone 6, last item).
+Next concrete task: **a longer supervised rehearsal** (milestone 6, "evaluate representative older puzzles") within the current allowance. The remaining AoC 2025 days are 5–12 (the 2025 event had 12 days).
+
+- **Proposed split:**
+  - Copilot on days 5–8: `run var/calibration.config.json --days 5,6,7,8 --tui`.
+  - Codex on days 9–12: `run var/calibration-codex.config.json --days 9,10,11,12 --tui`.
+- **Who runs it.** Confirm the plan with the operator first. The operator runs the commands, or the agent runs them only after explicit go-ahead in that session.
+- **What to record.** Per day and part: correct or not, attempts, credits, wall time, and failure modes. Write these to a private note in `var/`. Commit only aggregate, puzzle-free findings to FEASIBILITY.md or a new `docs/EVALUATION.md`.
+- **Defects.** Turn them into synthetic regression tests.
 
 Other open items:
 

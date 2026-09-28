@@ -30,4 +30,18 @@ Read `README.md`, `docs/REQUIREMENTS.md`, and `docs/PLAN.md` before continuing w
 
 ## Current stage
 
-The offline foundation has a configuration-checking CLI, exact credit values, a restrictive Pi settings profile, a provider-stream admission guard proven with a fake-provider Pi session, a durable journal-backed four-counter credit ledger with ledger-backed admission (D012), a validated run-state journal with private artifact layout and status CLI (D013), an offline-only AoC transport (D014, `docs/AOC.md`), a solver agent loop with constrained tools over `pi-agent-core` (D015) plus the solve-loop orchestrator, subscription selection, and a fail-closed `boc run` command. The GitHub Copilot and Codex adapters passed live calibration on 2026-09-27 and are the production adapters; others must pass supervised calibration (`--calibrate`, D018) first, a networkless Docker executor and toolchain image (`docs/SANDBOX.md`), and tests. This development host sits behind a TLS-intercepting corporate proxy: Docker builds need the operator's CA bundle as a BuildKit secret (`--secret id=extra_ca,src=/Users/benda/Work/ts/pki/ts_bundle.pem`, see `docs/SANDBOX.md`); never copy the bundle into the repository or an image layer. Live Node.js requests on this host need `NODE_EXTRA_CA_CERTS` set to the same bundle. Run `npm ci --ignore-scripts` and `npm run check`. An opt-in synthetic Docker probe is documented in `docs/FEASIBILITY.md`. No live provider adapter, production credit meter, solver, or AoC client exists yet. Read `docs/OPERATOR.md`, `docs/CONFIGURATION.md`, `docs/FEASIBILITY.md`, `docs/AOC.md`, and `docs/SANDBOX.md` alongside the plan before continuing. Do not mistake valid configuration or offline ledger tests with fake meters for live credit-budget enforcement.
+BoC works end to end. The two production adapters, GitHub Copilot and ChatGPT/Codex, passed supervised live calibration on 2026-09-27 (AoC 2025 days 1–4 solved). Anthropic is deferred until an API key exists; never use Claude subscription OAuth (D019). The architecture is recorded in `docs/DECISIONS.md` (D001–D019). The current state and the next task are in `docs/PLAN.md` under "Next session: start here".
+
+Run `npm ci --ignore-scripts` and `npm run check`. Read `docs/OPERATOR.md`, `docs/CONFIGURATION.md`, `docs/FEASIBILITY.md`, `docs/AOC.md`, and `docs/SANDBOX.md` alongside the plan before continuing.
+
+This development host sits behind a TLS-intercepting corporate proxy:
+
+- Docker builds need the operator's CA bundle as a BuildKit secret (`--secret id=extra_ca,src=/Users/benda/Work/ts/pki/ts_bundle.pem`; see `docs/SANDBOX.md`). Never copy the bundle into the repository or an image layer.
+- Live Node.js requests need `NODE_EXTRA_CA_CERTS` set to the same bundle.
+
+Private runtime files exist only locally and are ignored by Git:
+
+- `.secrets/aoc-session`, `.secrets/copilot.json`, and `.secrets/codex.json`. Never read, print, or copy their contents.
+- The calibration configs `var/calibration.config.json` (Copilot) and `var/calibration-codex.config.json` (Codex), with their storage under `var/calibration*/`.
+
+Live runs spend real credits and submit real answers. Start them only with the operator's explicit go-ahead, within the operator's current allowance (see the plan), and never without supervision.
