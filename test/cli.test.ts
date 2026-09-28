@@ -20,6 +20,33 @@ function capture() {
   };
 }
 
+/**
+ * The example config with every secret path and the storage redirected into an
+ * empty temp directory. Tests that run commands must never resolve the example's
+ * real `../.secrets/` paths: on an operator's machine they exist (for example the
+ * alert destinations), and a test would page the operator.
+ */
+async function hermeticExample(t: test.TestContext, drop: string[] = []): Promise<string> {
+  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = await mkdtemp(join(tmpdir(), "boc-cli-example-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const example = JSON.parse(
+    await readFile(new URL("../examples/boc.config.json", import.meta.url), "utf8"),
+  );
+  const text = JSON.stringify({ ...example, storageDir: "var" }).replaceAll(
+    "../.secrets/",
+    "missing-secrets/",
+  );
+  const config = JSON.parse(text);
+  for (const key of drop) delete config[key];
+  assert.doesNotMatch(JSON.stringify(config), /\.secrets/);
+  const path = join(dir, "boc.config.json");
+  await writeFile(path, JSON.stringify(config));
+  return path;
+}
+
 test("help works offline and explicitly reports the disabled live functionality", async () => {
   const output = capture();
   assert.equal(await runCli([], output), 0);
@@ -143,18 +170,11 @@ test("status is lock-free; ledger commands require exclusive access", async (t) 
 });
 
 test("run refuses to start without an eligible provider and validates day lists", async (t) => {
-  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  const example = fileURLToPath(new URL("../examples/boc.config.json", import.meta.url));
+  const example = await hermeticExample(t);
   let output = capture();
   assert.equal(await runCli(["run", example], output), 1);
   assert.match(output.stderr.join(), /Cannot read the ntfy topic file/, "alerts fail closed first");
-  const dir = await mkdtemp(join(tmpdir(), "boc-cli-run-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const { alerts: _alerts, ...withoutAlerts } = JSON.parse(await readFile(example, "utf8"));
-  const quiet = join(dir, "boc.config.json");
-  await writeFile(quiet, JSON.stringify({ ...withoutAlerts, storageDir: "var" }));
+  const quiet = await hermeticExample(t, ["alerts"]);
   output = capture();
   assert.equal(await runCli(["run", quiet], output), 1);
   assert.match(output.stderr.join(), /No eligible provider adapter/);
@@ -171,8 +191,8 @@ test("run refuses to start without an eligible provider and validates day lists"
   }
 });
 
-test("an aborted run reports a resumable stop with exit code 130", async () => {
-  const example = fileURLToPath(new URL("../examples/boc.config.json", import.meta.url));
+test("an aborted run reports a resumable stop with exit code 130", async (t) => {
+  const example = await hermeticExample(t, ["alerts"]);
   const controller = new AbortController();
   controller.abort();
   const output = capture();
@@ -255,8 +275,8 @@ test("the submission override command requires exact arguments and the store loc
   assert.equal(reopened.puzzles["day-01"]?.parts[1].status, "ready");
 });
 
-test("calibration runs need explicit released days and an interactive login needs a terminal", async () => {
-  const example = fileURLToPath(new URL("../examples/boc.config.json", import.meta.url));
+test("calibration runs need explicit released days and an interactive login needs a terminal", async (t) => {
+  const example = await hermeticExample(t);
   let output = capture();
   assert.equal(await runCli(["run", example, "--calibrate"], output), 2);
   output = capture();

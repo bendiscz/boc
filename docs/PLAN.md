@@ -378,3 +378,8 @@ Combined-config smoke test (live, 2026-09-28, with the operator's go-ahead):
 
 - `replay var/smoke-2025.config.json` (a 2025 copy of the event config with storage `var/bench/smoke-2025`) on day 1. Both adapters loaded, and the start check passed: both credential files were rewritten by the forced refresh. Copilot was chosen first and solved both parts on the first submission (8.6 s and 15.1 s) for 2.04 AI credits; Codex spent 0.
 - Not covered: the AoC `/settings` check (replay never contacts AoC; verified separately) and alert delivery (replay is silent; `boc alert-test` passed).
+
+Test hermeticity fix (2026-09-28):
+
+- Once the operator created `.secrets/ntfy-topic-url` and `.secrets/healthchecks-ping-url`, the example config's `../.secrets/` paths resolved to the real alert destinations. Three CLI tests ran `boc run` on the example in place. The "no eligible provider" test therefore likely sent a real urgent ntfy push and a healthchecks `/fail` ping on each full test run after the operator's alert test, and the aborted-run test a low-priority push. It also failed locally, although it passed in CI, where the files do not exist.
+- Fixed: `hermeticExample()` in `test/cli.test.ts` redirects every secret path and the storage into an empty temp directory and asserts that no `.secrets` path remains. Rule for new tests: never run a command against a config whose secret paths can resolve to real files. `npm run check`: 166 offline tests passed.
