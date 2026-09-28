@@ -7,7 +7,7 @@
 - **Providers:**
   - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md has both results).
   - Anthropic is deferred (D019): the policy forbids subscription OAuth, and there is no API key.
-- **AoC account.** All of AoC 2025 (12 days, 24 stars) is solved on the dedicated account. Days 1–2 and 5–8 were solved via Copilot, days 3–4 and 9–12 via Codex. The days 5–12 rehearsal results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
+- **AoC account.** All of AoC 2025 (12 days, 24 stars) is solved on the dedicated account. So are AoC 2024 days 13–25 (25 stars; day 25 part 2 needs days 1–12), via `var/eval-2024-copilot.config.json` (days 13–19) and `var/eval-2024-codex.config.json` (days 20–25). Days 1–2 and 5–8 were solved via Copilot, days 3–4 and 9–12 via Codex. The days 5–12 rehearsal results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
 - **Private local setup** (ignored by Git):
   - credentials in `.secrets/`: the AoC cookie, `copilot.json`, and `codex.json`;
   - `var/calibration.config.json` (Copilot, `gpt-6-sol`) and `var/calibration-codex.config.json` (Codex, `gpt-6-sol`), each for event 2025 with its own storage directory, both with `assumedMaxOutputTokens: 8000` (lowered from 16000 on 2026-09-28).
@@ -22,12 +22,26 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **a harder historical evaluation** on an older event with later, harder days, for example the second half of AoC 2024. This is live and needs the operator's explicit go-ahead in that session; config event years must be changed or new configs created. Check the new `output cap` log lines to validate the 8000-token `assumedMaxOutputTokens` (EVALUATION.md, "Output cap tuning").
+Next concrete task: **to be decided with the operator.** The AoC 2024 days 13–25 evaluation is done: 25 of 25 solvable parts were correct on the first attempt, with no output-cap hits (EVALUATION.md). Candidates:
 
-Notes for it:
+- the model-choice replay benchmark (open question below);
+- milestone 7 readiness (rechecks, live drills);
+- the remaining open items.
 
-- The ledger is per event year, so a 2024 config starts with a fresh event allowance. Confirm the allowance for that event with the operator.
-- Budget for the bug brake: about five requests per day, so a multi-day past run pauses about 8–9 minutes after every two days. Record results as in EVALUATION.md.
+Open question: **solver model choice and parallel solving** (raised by the operator on 2026-09-28; undecided, nothing changed).
+
+- **Question.** Is `gpt-6-sol` the right solving model, given that the goal is the correct answer as soon as possible? A faster, simpler model may reply sooner but fail on harder puzzles. Would solving one part with several different models in parallel give better results?
+- **Evidence so far.** On AoC 2025 and AoC 2024 days 13–25, `gpt-6-sol` took roughly 8–50 s per part, with no wrong answers. A wrong answer costs at least a 1-minute lockout plus a retry. In past-mode runs the wall time is dominated by the AoC request brake, not the model.
+- **Options to evaluate:**
+  - an escalation ladder: a fast model first, then `gpt-6-sol` on failure or timeout;
+  - a race: parallel models, first proposal wins;
+  - agreement: parallel models, submit early only when two independent answers agree, otherwise wait for the stronger model.
+- **Constraints any design must respect:**
+  - Credits are multiplied by N, but Copilot and Codex are separate pools, so a cross-provider race spends from separate allowances.
+  - Every concurrent call is reserved (D016).
+  - Submissions stay serialized with one proposal at a time, because wrong answers escalate lockouts.
+  - The run state currently allows only one active attempt per part, so parallel attempts need a DECISIONS.md entry.
+- **Measure before deciding.** Replay already-solved puzzles against the answers AoC accepted (recorded in the private run state), with no AoC submission. Record per-model latency, accuracy, and credits on the same puzzles. The solver must never see the recorded answer.
 
 Other open items:
 
@@ -306,3 +320,7 @@ Output cap tuning (offline, 2026-09-28):
 - Responses that hit the output cap (a provider `length` stop or the guard cutoff) are now logged per attempt. The system prompt asks for brief responses.
 - CONFIGURATION.md now describes the setting's dual role correctly: the enforced cap on Copilot, and the reservation size plus cutoff on Codex.
 - `npm run check`: 144 offline tests passed. The new test covers a truncated response that is reported and then retried.
+
+AoC 2024 days 13–25 evaluation (live, 2026-09-28, agent-run with the operator's go-ahead):
+
+- New private configs for event 2024 (300/100) and storage `var/eval-2024-*`. Result: 25 of 25 solvable parts correct on the first attempt, day 25 part 2 `needs-stars`, 20.43 Copilot and 10.91 Codex credits, and no output-cap hits. Aggregates are in EVALUATION.md; private notes are in `var/eval-2024/`. No code changes.
