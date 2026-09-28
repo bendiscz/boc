@@ -21,6 +21,12 @@ export interface ProviderAdapter {
   readonly minimumAttemptCredits: Credits;
   /** Output-token cap enforced on every request (the meter's estimates assume it). */
   readonly outputCap?: number;
+  /**
+   * Validate the credential with the provider without a model call, e.g. a forced
+   * token refresh (which also repairs an invalidated access token). Throws on
+   * failure. Used at start and before each release.
+   */
+  readonly checkCredential?: (signal?: AbortSignal) => Promise<void>;
 }
 
 export type AdapterFactory = (subscription: Subscription) => Promise<ProviderAdapter | undefined>;

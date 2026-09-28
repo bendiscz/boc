@@ -88,13 +88,13 @@ export async function createOAuthAdapter(options: OAuthAdapterOptions): Promise<
   options.checkCredential?.(credential, model);
 
   let refreshing: Promise<OAuthCredential> | undefined;
-  const fresh = async (signal: AbortSignal): Promise<OAuthCredential> => {
-    if (credential.expires - now() > REFRESH_MARGIN_MS) return credential;
+  const fresh = async (signal: AbortSignal, force = false): Promise<OAuthCredential> => {
+    if (!force && credential.expires - now() > REFRESH_MARGIN_MS) return credential;
     refreshing ??= (async () => {
       try {
         // Pick up a credential renewed on disk (e.g. by `boc login`) before refreshing.
         const onDisk = parseOAuthCredential(await readPrivateFile(path), label);
-        if (onDisk.expires - now() > REFRESH_MARGIN_MS) {
+        if (!force && onDisk.expires - now() > REFRESH_MARGIN_MS) {
           credential = onDisk;
           return onDisk;
         }
@@ -182,5 +182,12 @@ export async function createOAuthAdapter(options: OAuthAdapterOptions): Promise<
       settings.safetyFactor,
     ),
     outputCap,
+    // A forced refresh proves the provider still accepts the credential (and the
+    // Copilot exchange proves the entitlement) without spending credits. The
+    // rotated credential is persisted; never share a credential file between
+    // concurrently running BoC processes, since refresh tokens can be single-use.
+    checkCredential: async (signal) => {
+      await fresh(signal ?? new AbortController().signal, true);
+    },
   };
 }

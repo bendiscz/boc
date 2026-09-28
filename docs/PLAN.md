@@ -22,16 +22,12 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **credential checks at start and 30 minutes before each release** (operator decision, 2026-09-28). An unattended multi-day run on a Raspberry Pi needs the pre-release check as well as the one at start.
+Next concrete task: **to be decided with the operator.** Failover (D021) and readiness checks (D022) are done. Candidates:
 
-- **At start and at release − 30 min:** refresh and validate every subscription's credential without a model call (the OAuth refresh only). Check the AoC session cookie with one light authenticated page read per day.
-- **A failed check:** log it prominently, and mark that subscription unavailable, so selection fails over (D021) before release instead of at release.
-- **Offline tests** with a fake clock and fake OAuth.
-
-Then:
-
-- operator alerts when a run stops or needs attention;
+- a supervised one-request live check of the AoC `/settings` session check. It is unverified, and one authenticated GET needs the operator's go-ahead.
+- operator alerts when a run stops or a check fails; this matters most for an unattended host;
 - an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
+- a private combined event config (sol via Copilot first, then Codex);
 - live failure drills via replay (milestone 7).
 
 Operator decision (2026-09-28): the 3.39-credit reservation held in `var/bench/sol-2024` stays held. The Codex dashboard is too aggregated to read one call's charge, and the reservation counts only against that bench config. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
@@ -340,3 +336,9 @@ Operator decisions and hash-pinned uv (2026-09-28):
 Failover between subscriptions (D021, 2026-09-28):
 
 - A provider refusal (usage limit or rejected credential) records the attempt as `refused`, which does not count toward the attempt cap. The part fails over to the next subscription in configuration order. The run loop skips a usage-limited subscription until its reset and a credential-rejected one for the rest of the day; it stops only when every subscription refuses. Anthropic was removed from the example config (D020). `npm run check`: 154 offline tests passed. The new end-to-end test covers two subscriptions on separate pools, the first rejecting its credential, over two days with an attempt cap of 1.
+
+Readiness checks (D022, 2026-09-28):
+
+- Forced OAuth refresh (`checkCredential`) and the AoC `/settings` session check run at start, at T−30 before each unreleased day, and at T−5 after a failure. A failed credential makes that subscription unavailable until a check passes; a credential refusal during a run triggers an immediate check.
+- The tests exposed a selection bug: a repaired but refused subscription blocked failover because selection kept returning it first. The binding now receives the part's refused set as `exclude`.
+- `npm run check`: 159 offline tests passed. New tests: session check classification and cookie re-read; forced refresh persisted and sanitized; start-check failover without a model call; refusal repaired by refresh; T−30 and T−5 timing with a fix picked up at T−5.

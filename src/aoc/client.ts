@@ -70,6 +70,7 @@ export interface AocClientOptions {
 }
 
 export type AocRequest =
+  | { readonly kind: "session" }
   | { readonly kind: "puzzle"; readonly year: number; readonly day: number }
   | { readonly kind: "input"; readonly year: number; readonly day: number }
   | {
@@ -86,7 +87,15 @@ export interface AocClient {
   fetchPuzzle(year: number, day: number): Promise<string>;
   fetchInput(year: number, day: number): Promise<string>;
   submitAnswer(year: number, day: number, part: 1 | 2, answer: string): Promise<string>;
+  /**
+   * Is the session cookie still accepted? One light authenticated page read
+   * (`/settings`), re-reading the cookie file first so a replaced cookie counts.
+   * `unknown` means the answer could not be established (network, unexpected page).
+   */
+  checkSession?(): Promise<SessionCheck>;
 }
+
+export type SessionCheck = "ok" | "logged-out" | "unknown";
 
 async function readCookie(path: string): Promise<string> {
   let handle: Awaited<ReturnType<typeof open>> | undefined;
@@ -168,9 +177,14 @@ export function createAocClient(options: AocClientOptions): AocClient {
 
   const request = (target: AocRequest): Promise<string> => {
     const run = async () => {
-      validateTarget(target.year, target.day);
-      const base = `${AOC_ORIGIN}/${target.year}/day/${target.day}`;
-      const url = target.kind === "puzzle" ? base : `${base}/${target.kind}`;
+      let url: string;
+      if (target.kind === "session") {
+        url = `${AOC_ORIGIN}/settings`;
+      } else {
+        validateTarget(target.year, target.day);
+        const base = `${AOC_ORIGIN}/${target.year}/day/${target.day}`;
+        url = target.kind === "puzzle" ? base : `${base}/${target.kind}`;
+      }
       const isAnswer = target.kind === "answer";
       let body: string | undefined;
       if (isAnswer) {
@@ -250,5 +264,17 @@ export function createAocClient(options: AocClientOptions): AocClient {
     fetchInput: (year: number, day: number) => request({ kind: "input", year, day }),
     submitAnswer: (year: number, day: number, part: 1 | 2, answer: string) =>
       request({ kind: "answer", year, day, part, answer }),
+    checkSession: async (): Promise<SessionCheck> => {
+      cookie = undefined; // Re-read: the operator may have replaced the cookie file.
+      try {
+        const html = await request({ kind: "session" });
+        return /<div\b[^>]*class="user"/i.test(html) ? "ok" : "logged-out";
+      } catch (error) {
+        if (error instanceof AocError && (error.code === "auth" || error.code === "config")) {
+          return "logged-out";
+        }
+        return "unknown";
+      }
+    },
   });
 }

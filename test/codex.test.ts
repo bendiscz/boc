@@ -270,3 +270,27 @@ test("browser login prints the sign-in URL and cancels the paste prompt when the
   );
   assert.doesNotMatch(said.join(), /synthetic-[ar]3/);
 });
+
+test("the credential check forces a refresh, persists it, and reports failure safely", async (t) => {
+  const f = await setup(t); // Access token valid for an hour: a normal request would not refresh.
+  let refreshes = 0;
+  let fail = false;
+  const oauth = (f.provider.auth as { oauth: { refresh: unknown } }).oauth;
+  oauth.refresh = async (c: OAuthCredential) => {
+    refreshes++;
+    if (fail) throw new Error("synthetic-secret refresh rejected");
+    return { ...c, access: `synthetic-access-${refreshes}`, expires: Date.now() + 7_200_000 };
+  };
+  const adapter = await createCodexAdapter(f.subscription, { provider: f.provider });
+  assert.ok(adapter.checkCredential);
+  await adapter.checkCredential();
+  assert.equal(refreshes, 1, "forced even though the token is still valid");
+  const stored = JSON.parse(await readFile(f.credentialFile, "utf8")) as { access: string };
+  assert.equal(stored.access, "synthetic-access-1", "the rotated credential is persisted");
+  fail = true;
+  await assert.rejects(adapter.checkCredential(), (error: Error) => {
+    assert.match(error.message, /token refresh failed; run boc login/);
+    assert.doesNotMatch(error.message, /synthetic-secret/);
+    return true;
+  });
+});

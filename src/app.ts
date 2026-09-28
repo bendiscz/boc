@@ -1,5 +1,5 @@
 import { appendFile } from "node:fs/promises";
-import { isReleased, UNLOCK_RETRY_DELAYS_MS, waitForRelease } from "./aoc/calendar.ts";
+import { isReleased, releaseTime, UNLOCK_RETRY_DELAYS_MS, waitForRelease } from "./aoc/calendar.ts";
 import { type AocClient, AocError, createAocClient, DEFAULT_RATE_CAP } from "./aoc/client.ts";
 import { AocService } from "./aoc/service.ts";
 import { createLedgerAdmission } from "./budget/admission.ts";
@@ -20,6 +20,11 @@ import { type RunState, RunStore } from "./state/run-state.ts";
 import { writeViews } from "./state/summary.ts";
 import { PrivateFileError } from "./util/private-file.ts";
 import { abortableSleep } from "./util/sleep.ts";
+
+/** Readiness checks (credentials and AoC session) this long before each release. */
+const PRE_RELEASE_CHECK_MS = 30 * 60_000;
+/** After a failed pre-release check, check again this long before the release. */
+const PRE_RELEASE_RECHECK_MS = 5 * 60_000;
 
 /** How long a usage-limited subscription is skipped when the provider gives no reset time. */
 const DEFAULT_REFUSAL_MS = 60 * 60_000;
@@ -172,19 +177,63 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
     const results: DayResult[] = [];
 
     /**
-     * Subscriptions a provider refused, until when (epoch ms). A usage limit lasts
-     * until the announced reset (default 60 min); a rejected credential lasts until
-     * the next day, when a fresh chance is given (e.g. after `boc login`).
+     * Subscriptions that cannot be used now, until when (epoch ms). A usage limit
+     * lasts until the announced reset (default 60 min). A rejected credential lasts
+     * until a later readiness check passes (e.g. after `boc login`).
      */
     const unavailable = new Map<string, number>();
+    const credentialOk = async (id: string, when: string): Promise<boolean> => {
+      const adapter = adapters.get(id);
+      if (!adapter?.checkCredential) return true;
+      try {
+        await adapter.checkCredential(options.signal);
+      } catch (error) {
+        options.signal?.throwIfAborted();
+        unavailable.set(id, Number.POSITIVE_INFINITY);
+        const why = error instanceof AdapterError ? error.message : "credential check failed";
+        log(`${when} check FAILED: subscription ${id}: ${why} It is skipped until a check passes.`);
+        return false;
+      }
+      if (unavailable.get(id) === Number.POSITIVE_INFINITY) {
+        unavailable.delete(id);
+        log(`${when} check: subscription ${id} is usable again`);
+      }
+      return true;
+    };
+    /** Credentials (no model call) and the AoC session (one page read). */
+    const checkReadiness = async (when: string): Promise<boolean> => {
+      let ok = true;
+      for (const id of adapters.keys()) if (!(await credentialOk(id, when))) ok = false;
+      if (client.checkSession) {
+        const session = await client.checkSession();
+        if (session === "logged-out") {
+          ok = false;
+          log(`${when} check FAILED: the AoC session is not accepted; replace the cookie file.`);
+        } else if (session === "unknown") {
+          log(`${when} check: the AoC session could not be verified`);
+        }
+      }
+      if (ok) log(`${when} check passed`);
+      return ok;
+    };
+    await checkReadiness("start");
+
     let day: number | undefined = days ? days.shift() : 1;
     while (day !== undefined) {
       options.signal?.throwIfAborted();
-      for (const [id, until] of unavailable)
-        if (until === Number.POSITIVE_INFINITY) unavailable.delete(id);
       const puzzle = puzzleId(day);
       setCurrent(puzzle);
       if (!isReleased(year, day, now())) {
+        const release = releaseTime(year, day).getTime();
+        if (now().getTime() < release - PRE_RELEASE_CHECK_MS) {
+          log(`${puzzle}: waiting for the pre-release check`);
+          await sleep(release - PRE_RELEASE_CHECK_MS - now().getTime(), options.signal);
+          const ok = await checkReadiness(`${puzzle} pre-release`);
+          if (!ok && now().getTime() < release - PRE_RELEASE_RECHECK_MS) {
+            await sleep(release - PRE_RELEASE_RECHECK_MS - now().getTime(), options.signal);
+            await checkReadiness(`${puzzle} final pre-release`);
+          }
+        }
         log(`${puzzle}: waiting for release`);
         await waitForRelease(year, day, {
           now: () => now().getTime(),
@@ -206,8 +255,9 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
           aoc,
           paths,
           executor,
-          binding: () => {
+          binding: (_part, _attempt, exclude) => {
             const chosen = selectSubscription({
+              exclude,
               config,
               ledger: ledger.status([puzzle]),
               puzzle,
@@ -235,12 +285,16 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
           sleep,
           ...(options.signal ? { signal: options.signal } : {}),
           onEvent: log,
-          onRefusal: (refusal) => {
+          onRefusal: async (refusal) => {
             const until =
               refusal.kind === "credential"
                 ? Number.POSITIVE_INFINITY
                 : now().getTime() + (refusal.retryAfterMs ?? DEFAULT_REFUSAL_MS);
             unavailable.set(refusal.subscription, until);
+            // A forced refresh may repair an invalidated access token at once.
+            if (refusal.kind === "credential") {
+              await credentialOk(refusal.subscription, `${puzzle} refusal`);
+            }
             const others = [...adapters.keys()].filter(
               (id) =>
                 id !== refusal.subscription && !((unavailable.get(id) ?? 0) > now().getTime()),

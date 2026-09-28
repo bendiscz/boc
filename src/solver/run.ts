@@ -51,8 +51,15 @@ export interface SolveOptions {
   readonly aoc: AocService;
   readonly paths: Layout;
   readonly executor: Executor;
-  /** Chooses the subscription/model for the next attempt, or undefined if none can run. */
-  readonly binding: (part: PartNumber, attempt: number) => SolverBinding | undefined;
+  /**
+   * Chooses the subscription/model for the next attempt, or undefined if none can
+   * run. `exclude` holds subscriptions that refused during this part.
+   */
+  readonly binding: (
+    part: PartNumber,
+    attempt: number,
+    exclude: ReadonlySet<string>,
+  ) => SolverBinding | undefined;
   readonly maxAttemptsPerPart?: number;
   readonly maxTurnsPerAttempt?: number;
   /** Wall-clock limit per model response (default 120 s; normal turns took under 40 s). */
@@ -70,7 +77,7 @@ export interface SolveOptions {
    * credential). The binding should stop offering it; the part then fails over to
    * the next subscription. `retryAfterMs` is the provider's announced reset, if any.
    */
-  readonly onRefusal?: (refusal: ProviderRefusal) => void;
+  readonly onRefusal?: (refusal: ProviderRefusal) => void | Promise<void>;
 }
 
 export interface ProviderRefusal {
@@ -235,7 +242,7 @@ async function runAttempt(
   const { store, aoc, puzzle, paths } = options;
   const before = store.state.puzzles[puzzle]?.parts[part];
   const attempt = (before?.attempts ?? 0) + 1;
-  const offered = options.binding(part, attempt);
+  const offered = options.binding(part, attempt, refused);
   const binding = offered && !refused.has(offered.subscription) ? offered : undefined;
   if (!binding) {
     log("no eligible subscription");
@@ -412,7 +419,7 @@ async function runAttempt(
     const minutes = /Retry in about (\d+) min/.exec(message)?.[1];
     refused.add(binding.subscription);
     log(`attempt ${attempt} refused by ${binding.subscription}: ${message}`);
-    options.onRefusal?.({
+    await options.onRefusal?.({
       subscription: binding.subscription,
       kind: message.startsWith(USAGE_LIMIT_MESSAGE) ? "usage-limit" : "credential",
       retryAfterMs: minutes === undefined ? undefined : Number(minutes) * 60_000,

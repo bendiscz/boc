@@ -35,6 +35,7 @@ The operator decided that BoC must **not** wait between the puzzle page, input, 
 - **Waiting for a release:** sleep until the release time plus a small margin, with no polling. If a just-released puzzle is still reported unavailable (clock skew), make a few bounded retries: 15 s, 30 s, 60 s, then 900 s.
 - **Further answer attempts:** obey the wait AoC reports after a wrong or too-recent answer. The embargo is event-wide and includes a margin. A conservative default applies when the wait cannot be parsed. Never resubmit a judged answer or an answer with an unknown outcome.
 - **Repeated downloads:** none. Statements and inputs are cached; reconciliation reads the puzzle page once per explicit call.
+- **Session check (D022):** one authenticated read of `/settings` at start and 30 minutes before each unreleased day, plus one recheck at T−5 only after a failure. It catches an expired cookie before the release. Its exact page and redirect behaviour are not yet verified live.
 - **Bug brake:** the client caps request starts in a sliding window, by default 10 per 10 minutes (`rateCap`). A single day's burst (about five requests) stays below this cap, but back-to-back past days reach it after two days, so a multi-day past run pauses for several minutes. Each wait is logged and abortable. A runaway loop is slowed rather than allowed to hammer the site. This is not pacing: normal bursts go out immediately.
 
 ## Final day's part 2

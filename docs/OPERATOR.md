@@ -62,9 +62,15 @@ node dist/main.js run boc.config.json --tui           # live dashboard
 - A part also ends on exhausted credits, the attempt limit, or a submission whose outcome is uncertain. The run then continues with the next day, and a later run resolves the uncertain submission by reading the puzzle page.
 - **Failover.** Subscriptions are tried in configuration order, for example `gpt-6-sol` via Copilot first, then via Codex.
   - When a provider refuses requests, BoC fails over to the next subscription, and the refused attempt does not count toward the attempt limit. The log line reads `subscription … unavailable …; failing over to …`.
-  - A usage-limited subscription is skipped until the provider's announced reset, or for 60 minutes if none is given. A rejected credential is skipped for the rest of that day; run `boc login` to restore it.
+  - A usage-limited subscription is skipped until the provider's announced reset, or for 60 minutes if none is given. A rejected credential is skipped until a readiness check passes; run `boc login` to restore it.
   - If every subscription refuses, the run stops.
 - A provider fault (a charge that cannot be settled) stops the whole run until you reconcile it. It never fails over, because the charge is unknown.
+- **Readiness checks (D022).** They run when BoC starts, and 30 minutes before each release. If a check fails, it runs again 5 minutes before the release.
+  - Every subscription's credential is refreshed, which is not a model call and spends no credits.
+  - The AoC session is checked with one page read.
+  - Failures are logged as `… check FAILED: …`. Run `boc login`, or replace the cookie file, before the recheck; a running BoC picks up both files.
+  - A subscription that fails the check is skipped, so the release uses the next one.
+  - Do not run two BoC processes that share a credential file at the same time: refresh tokens can be single-use.
 
 ## Monitoring
 

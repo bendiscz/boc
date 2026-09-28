@@ -143,7 +143,23 @@ On 2026-09-28, following the Codex credential outage during the benchmark:
 - **What counts as a refusal:** a usage limit or a rejected credential, reported before or during an attempt. The guard reduces these to safe categories (EVALUATION.md).
 - **Recording:** the attempt is recorded with outcome `refused`. `refusedAttempts` counts these separately, and they never count toward `maxAttemptsPerPart`, because the model did not fail.
 - **Failover:** the part continues with the next subscription in configuration order (operator preference). A subscription that refused is not retried within the same part.
-- **Run-level skipping:** the run loop skips a usage-limited subscription until the announced reset (default 60 minutes), and one with a rejected credential for the rest of the day. The next day gets a fresh chance, so an unattended multi-day run recovers after `boc login`.
+- **Run-level skipping:** the run loop skips a usage-limited subscription until the announced reset (default 60 minutes). A subscription with a rejected credential is skipped until a readiness check passes (amended by D022). Before D022, it was skipped for the rest of the day.
 - **Stopping:** the run stops only when every subscription has refused.
 - **Limits:** the ledger still admits every call, so failover cannot bypass a limit, and units from different pools are never combined.
 - **Provider faults** (unknown charges) still stop the run without failover: the adapter's accounting just failed, and the charge must be reconciled first.
+
+## D022 — Readiness checks at start and before each release
+
+On 2026-09-28 the operator decided that credentials are checked when BoC starts and 30 minutes before each release. An unattended multi-day run needs the second check as much as the first.
+
+- **Credentials.** `ProviderAdapter.checkCredential` forces an OAuth refresh without a model call, and persists the rotated credential.
+  - For Copilot, the refresh is the GitHub-to-Copilot token exchange, so it also proves the entitlement. For Codex, it is the auth.openai.com refresh.
+  - A forced refresh also repairs an invalidated access token while the refresh token is still valid.
+  - A failed check marks the subscription unavailable, so selection fails over (D021) before the release rather than at it. It stays unavailable until a later check passes, for example after `boc login`.
+  - A credential refusal during a run triggers an immediate check.
+  - Refresh tokens can be single-use, so concurrently running BoC processes must never share a credential file.
+- **AoC session.** `AocClient.checkSession` makes one authenticated read of `/settings`, re-reading the cookie file first, and classifies the result as `ok`, `logged-out`, or `unknown`.
+  - A logged-out session is logged prominently but cannot fail over: there is one AoC account. The release fetch then stops with the existing clear error.
+  - Traffic: one request at start and one at T−30 per unreleased day, plus one recheck at T−5 only if the T−30 check failed. Past or already solved days get no pre-release check.
+- **Timing.** At T−30 BoC runs the checks, and if any failed it rechecks at T−5. It then sleeps to the release as before. A run started within 30 minutes of a release relies on its start check.
+- **Unverified.** AoC's exact `/settings` response (logged-in marker; a redirect when logged out) is taken from the site's long-standing conventions. It has not been checked with a live request.

@@ -11,6 +11,7 @@ import { parseCredits } from "../src/budget/credits.ts";
 import { CreditLedger } from "../src/budget/ledger.ts";
 import { parseConfig } from "../src/config.ts";
 import type { ProviderAdapter } from "../src/providers/adapter.ts";
+import { AdapterError } from "../src/providers/oauth-adapter.ts";
 import type { Executor } from "../src/sandbox/executor.ts";
 import { FAKE_MODEL, message, responseStream } from "./support/fake-pi.ts";
 
@@ -192,9 +193,11 @@ test("live mode sleeps until release before the first request, then stops after 
   const results = await f.run();
   assert.equal(results[0]?.part2, "solved");
   assert.ok(f.aocCalls[0]?.endsWith("@2025-12-01T05:00:03.000Z"), f.aocCalls[0]);
+  assert.equal(f.sleeps[0], 1_800_000, "first to the pre-release check, 30 min before");
   assert.equal(
-    f.sleeps.slice(0, 60).reduce((a, b) => a + b, 0),
+    f.sleeps.slice(0, 31).reduce((a, b) => a + b, 0),
     3_600_000,
+    "then on to the release",
   );
   assert.equal(results.at(-1)?.part1, "not-released");
   assert.equal(results.length, 2, "default mode stops at the first unavailable day");
@@ -232,7 +235,13 @@ test("subscriptions without an estimate are not used; missing provider caps are 
   assert.ok(warned.some((e) => /pool pool has no provider-side spending cap/.test(e)));
 });
 
-test("a refusing subscription fails over to the next one; the refusal is not an attempt", async (t) => {
+interface FirstBehavior {
+  /** Whether the first subscription's next model call is refused (credential). */
+  refuses: () => boolean;
+  checkCredential?: () => Promise<void>;
+}
+
+async function twoSubscriptions(t: test.TestContext, first: FirstBehavior) {
   const root = await mkdtemp(join(tmpdir(), "boc-failover-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const estimate = {
@@ -272,20 +281,29 @@ test("a refusing subscription fails over to the next one; the refusal is not an 
     ],
   });
   const solved = new Map<number, number>();
+  const aocCalls: string[] = [];
+  let session: () => "ok" | "logged-out" = () => "ok";
   const client: AocClient = {
     prepare: async () => {},
-    fetchPuzzle: async (_y, day) => ((solved.get(day) ?? 0) >= 1 ? page(2, ["1"]) : page(1, [])),
+    fetchPuzzle: async (_y, day) => {
+      aocCalls.push(`puzzle ${day}`);
+      return (solved.get(day) ?? 0) >= 1 ? page(2, ["1"]) : page(1, []);
+    },
     fetchInput: async () => "1\n",
     submitAnswer: async (_y, day) => {
       solved.set(day, (solved.get(day) ?? 0) + 1);
       return correct;
+    },
+    checkSession: async () => {
+      aocCalls.push(`session @${new Date(clock).toISOString()}`);
+      return session();
     },
   };
   const calls = { first: 0, second: 0 };
   const adapter = (name: "first" | "second"): ProviderAdapter => {
     const invoke = (_m: unknown, context: TranscriptContext) => {
       calls[name]++;
-      if (name === "first") {
+      if (name === "first" && first.refuses()) {
         return responseStream(
           message({
             content: [],
@@ -311,32 +329,58 @@ test("a refusing subscription fails over to the next one; the refusal is not an 
         actualCharge: async () => ({ credits: parseCredits("1"), receipt: "receipt:fake" }),
       },
       minimumAttemptCredits: parseCredits("1"),
+      ...(name === "first" && first.checkCredential
+        ? { checkCredential: first.checkCredential }
+        : {}),
     };
   };
+  let clock = Date.parse("2026-01-01T00:00:00.000Z");
   const events: string[] = [];
-  const results = await runEvent({
-    config,
-    version: "test",
-    days: [1, 2],
-    adapters: {
-      "github-copilot": async () => adapter("first"),
-      "openai-codex": async () => adapter("second"),
+  const run = (extra: Partial<Parameters<typeof runEvent>[0]> = {}) =>
+    runEvent({
+      config,
+      version: "test",
+      days: [1, 2],
+      adapters: {
+        "github-copilot": async () => adapter("first"),
+        "openai-codex": async () => adapter("second"),
+      },
+      aocClient: client,
+      executor: {
+        run: async () => ({
+          exitCode: 0,
+          timedOut: false,
+          stdout: "",
+          stderr: "",
+          truncated: false,
+          durationMs: 0,
+        }),
+      },
+      now: () => new Date(clock),
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      maxAttemptsPerPart: 1,
+      onEvent: (e) => events.push(`${new Date(clock).toISOString()} ${e}`),
+      ...extra,
+    });
+  return {
+    run,
+    calls,
+    events,
+    aocCalls,
+    setClock: (iso: string) => {
+      clock = Date.parse(iso);
     },
-    aocClient: client,
-    executor: {
-      run: async () => ({
-        exitCode: 0,
-        timedOut: false,
-        stdout: "",
-        stderr: "",
-        truncated: false,
-        durationMs: 0,
-      }),
+    setSession: (value: () => "ok" | "logged-out") => {
+      session = value;
     },
-    now: () => new Date("2026-01-01T00:00:00.000Z"),
-    maxAttemptsPerPart: 1,
-    onEvent: (e) => events.push(e),
-  });
+  };
+}
+
+test("a refusing subscription fails over to the next one; the refusal is not an attempt", async (t) => {
+  const f = await twoSubscriptions(t, { refuses: () => true });
+  const results = await f.run();
   assert.deepEqual(
     results.map((r) => [r.part1, r.part2]),
     [
@@ -345,13 +389,87 @@ test("a refusing subscription fails over to the next one; the refusal is not an 
     ],
     "an attempt cap of 1 still leaves room: refusals are not attempts",
   );
-  // Day 1: refused once, then the credential stays unavailable for that day.
-  // Day 2: a fresh chance (e.g. after boc login), refused once more.
-  assert.equal(calls.first, 2);
-  assert.equal(calls.second, 4);
-  assert.equal(events.filter((e) => /failing over to second/.test(e)).length, 2);
+  // Refused once; without a passing credential check it stays unavailable.
+  assert.equal(f.calls.first, 1);
+  assert.equal(f.calls.second, 4);
+  assert.equal(f.events.filter((e) => /failing over to second/.test(e)).length, 1);
   assert.ok(
-    events.every((e) => !/invalidated oauth token/.test(e)),
+    f.events.every((e) => !/invalidated oauth token/.test(e)),
     "no raw provider text",
   );
+});
+
+test("a failed start check skips the subscription with no model call", async (t) => {
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    checkCredential: async () => {
+      throw new AdapterError("Copilot token refresh failed; run boc login if this persists.");
+    },
+  });
+  const results = await f.run();
+  assert.ok(results.every((r) => r.part1 === "solved" && r.part2 === "solved"));
+  assert.equal(f.calls.first, 0);
+  assert.ok(
+    f.events.some((e) =>
+      /start check FAILED: subscription first: Copilot token refresh failed/.test(e),
+    ),
+  );
+  assert.ok(f.aocCalls[0]?.startsWith("session"), "the AoC session is checked at start");
+});
+
+test("a credential refusal repaired by a forced refresh keeps the subscription in use", async (t) => {
+  let refusals = 1;
+  let checks = 0;
+  const f = await twoSubscriptions(t, {
+    refuses: () => refusals-- > 0,
+    checkCredential: async () => {
+      checks++;
+    },
+  });
+  const results = await f.run();
+  assert.ok(results.every((r) => r.part1 === "solved" && r.part2 === "solved"));
+  assert.equal(checks, 2, "at start, and right after the refusal");
+  assert.equal(f.calls.second, 1, "only the refused part failed over");
+  assert.equal(f.calls.first, 4, "then the refreshed subscription was used again");
+});
+
+test("readiness is checked 30 minutes before a release, and rechecked after a failure", async (t) => {
+  let credentialChecks = 0;
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    checkCredential: async () => {
+      // Fails at start and at T-30; the operator's boc login fixes it before T-5.
+      if (++credentialChecks <= 2) {
+        throw new AdapterError("Copilot token refresh failed; run boc login if this persists.");
+      }
+    },
+  });
+  f.setClock("2025-12-01T03:00:00.000Z"); // Two hours before day 1.
+  let sessionChecks = 0;
+  f.setSession(() => (++sessionChecks === 2 ? "logged-out" : "ok"));
+  const results = await f.run({ days: [1] });
+  assert.equal(results[0]?.part2, "solved");
+  const at = (time: string, pattern: RegExp) =>
+    assert.ok(
+      f.events.some((e) => e.startsWith(time) && pattern.test(e)),
+      `${time} ${pattern}`,
+    );
+  at("2025-12-01T04:30:00.000Z", /day-01 pre-release check FAILED: subscription first/);
+  at("2025-12-01T04:30:00.000Z", /day-01 pre-release check FAILED: the AoC session/);
+  at(
+    "2025-12-01T04:55:00.000Z",
+    /day-01 final pre-release check: subscription first is usable again/,
+  );
+  at("2025-12-01T04:55:00.000Z", /day-01 final pre-release check passed/);
+  assert.deepEqual(
+    f.aocCalls.filter((c) => c.startsWith("session")),
+    [
+      "session @2025-12-01T03:00:00.000Z",
+      "session @2025-12-01T04:30:00.000Z",
+      "session @2025-12-01T04:55:00.000Z",
+    ],
+    "one light read at start, at T-30, and one recheck at T-5",
+  );
+  assert.equal(f.calls.second, 0, "the repaired first subscription solved the day");
+  assert.equal(f.calls.first, 2);
 });

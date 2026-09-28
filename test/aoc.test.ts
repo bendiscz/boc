@@ -419,3 +419,41 @@ test("the rate cap brakes runaway loops without delaying a normal burst", async 
     }),
   );
 });
+
+test("the session check reads /settings, re-reads the cookie, and classifies the result", async (t) => {
+  const path = await cookieFile(t);
+  const seen: { url: string; cookie: string }[] = [];
+  const replies: (() => Response)[] = [
+    () => new Response('<html><div class="user">synthetic</div></html>'),
+    () => new Response(null, { status: 302, headers: { location: "/auth/login" } }),
+    () => new Response("<html>no user marker</html>"),
+    () => new Response("oops", { status: 500 }),
+    () => {
+      throw new TypeError("network down");
+    },
+  ];
+  const impl = (async (url: string | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    seen.push({ url: String(url), cookie: headers.get("cookie") ?? "" });
+    const next = replies.shift();
+    if (!next) throw new Error("no reply scripted");
+    return next();
+  }) as typeof fetch;
+  const client = createAocClient({
+    cookieFile: path,
+    contact: "ops@example.invalid",
+    version: "0",
+    fetch: impl,
+  });
+  assert.equal(await client.checkSession?.(), "ok");
+  // The operator replaces the cookie; the next check must use the new one.
+  const renewed = "b".repeat(COOKIE.length);
+  await writeFile(path, `${renewed}\n`);
+  assert.equal(await client.checkSession?.(), "logged-out", "redirect to login");
+  assert.equal(await client.checkSession?.(), "logged-out", "page without the user marker");
+  assert.equal(await client.checkSession?.(), "unknown", "server error");
+  assert.equal(await client.checkSession?.(), "unknown", "network failure");
+  assert.ok(seen.every((s) => s.url === "https://adventofcode.com/settings"));
+  assert.equal(seen[0]?.cookie, `session=${COOKIE}`);
+  assert.equal(seen[1]?.cookie, `session=${renewed}`);
+});
