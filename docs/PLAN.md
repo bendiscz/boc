@@ -27,9 +27,7 @@ Next concrete task: **to be decided with the operator.** The luna vs sol benchma
 - milestone 7 readiness (rechecks, live drills);
 - the remaining open items.
 
-Pending operator action:
-
-- `var/bench/sol-2024` holds a 3.39-credit reservation from the call that was in flight when the run was interrupted. Its charge is unknown. Settle it with `boc ledger settle` once the Codex usage dashboard gives evidence, or leave it held; it counts against that bench config only.
+Operator decision (2026-09-28): the 3.39-credit reservation held in `var/bench/sol-2024` stays held. The Codex dashboard is too aggregated to read one call's charge, and the reservation counts only against that bench config. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
 Decided (D020, 2026-09-28): keep `gpt-6-sol` as the solving model, with no parallel solving; Anthropic is dropped.
 
