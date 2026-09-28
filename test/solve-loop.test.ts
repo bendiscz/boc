@@ -438,3 +438,29 @@ test("the attempt deadline ends an attempt between turns; the retry is told", as
   assert.match(f.prompts[1] ?? "", /previous attempt ran out of time/);
   assert.equal(f.store.state.puzzles["day-01"]?.parts[1].submissions.length, 1);
 });
+
+test("a known-wrong proposal is refused back to the model within the same attempt", async (t) => {
+  const f = await fixture(t, {
+    aoc: [
+      page(1, [], 1),
+      reply("That's not the right answer; your answer is too high. Please wait one minute."),
+      reply("That's the right answer!"),
+      page(1, ["50"]),
+    ],
+    model: [propose("100"), propose("100"), propose("150"), propose("50")],
+  });
+  assert.equal((await f.solve()).part1, "solved");
+  const part = f.store.state.puzzles["day-01"]?.parts[1];
+  assert.equal(part?.attempts, 2, "the refusals did not cost attempts");
+  assert.deepEqual(
+    part?.submissions.map((s) => s.answer),
+    ["100", "50"],
+  );
+  assert.ok(f.events.some((e) => /refused proposal 100 \(duplicate-answer\)/.test(e)));
+  assert.ok(f.events.some((e) => /refused proposal 150 \(contradicts-too-high\)/.test(e)));
+  const transcript = await readFile(
+    join(f.paths.attempt(puzzleId(1), 1, 2), "transcript.json"),
+    "utf8",
+  );
+  assert.match(transcript, /already submitted and judged wrong/);
+});

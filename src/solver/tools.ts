@@ -15,6 +15,12 @@ export interface SolverToolsOptions {
   readonly workspace: Workspace;
   readonly executor: Executor;
   readonly maxRunTimeoutSeconds?: number;
+  /**
+   * Orchestrator check before a proposal is accepted: a message explaining why the
+   * answer is already known to be wrong, or undefined. A refused proposal goes
+   * back to the model as a tool error, so the attempt continues.
+   */
+  readonly refuse?: (answer: string) => string | undefined;
   /** Called with a validated answer; the orchestrator records and may submit it. */
   readonly onProposal: (answer: string) => void;
 }
@@ -116,6 +122,8 @@ export function createSolverTools(options: SolverToolsOptions): SolverTools {
       if (!isAnswer(answer)) {
         throw new Error("Answers must be 1-200 printable characters without whitespace.");
       }
+      const refusal = options.refuse?.(answer);
+      if (refusal) throw new Error(refusal);
       proposal = answer;
       options.onProposal(answer);
       return { content: text("Answer recorded."), details: {}, terminate: true };

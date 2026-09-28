@@ -14,7 +14,12 @@ import type { Executor } from "../sandbox/executor.ts";
 import { Workspace } from "../sandbox/workspace.ts";
 import type { PartNumber, PuzzleId } from "../state/ids.ts";
 import { type Layout, writeFileAtomic } from "../state/layout.ts";
-import { type RunStore, StateError, submissionBlocker } from "../state/run-state.ts";
+import {
+  answerRejection,
+  type RunStore,
+  StateError,
+  submissionBlocker,
+} from "../state/run-state.ts";
 import { abortableSleep } from "../util/sleep.ts";
 import { createSolverAgent } from "./agent.ts";
 import { SOLVER_SYSTEM_PROMPT, taskPrompt } from "./prompt.ts";
@@ -271,6 +276,13 @@ async function runAttempt(
     workspace,
     executor: options.executor,
     onProposal: (answer) => log(`attempt ${attempt} proposed ${answer}`),
+    refuse: (answer) => {
+      const partState = store.state.puzzles[puzzle]?.parts[part];
+      const why = partState ? answerRejection(partState, answer) : undefined;
+      if (!why) return undefined;
+      log(`attempt ${attempt}: refused proposal ${answer} (${why})`);
+      return REFUSAL_TEXT[why];
+    },
   });
   const agent = createSolverAgent({
     model: binding.model,
@@ -382,6 +394,15 @@ async function runAttempt(
   log(`attempt ${attempt} ended without an answer${agentError ? " (error)" : ""}`);
   return undefined;
 }
+
+const REFUSAL_TEXT = {
+  "duplicate-answer":
+    "This answer was already submitted and judged wrong. Find the bug in your solution; do not propose it again.",
+  "contradicts-too-low":
+    "This answer contradicts earlier feedback: the answer is known to be higher. Find the bug.",
+  "contradicts-too-high":
+    "This answer contradicts earlier feedback: the answer is known to be lower. Find the bug.",
+} as const;
 
 const DEFAULT_MAX_RESPONSE_MS = 120_000;
 const DEFAULT_STALL_MS = 60_000;

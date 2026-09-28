@@ -208,17 +208,11 @@ function isInteger(value: string): boolean {
   return /^-?(0|[1-9][0-9]*)(?![\s\S])/.test(value);
 }
 
-/** Reasons a proposed answer may not be submitted now; undefined when allowed. */
-export function submissionBlocker(
-  state: RunState,
-  puzzleId: PuzzleId,
-  partNumber: PartNumber,
+/** Why a candidate answer is already known to be wrong for this part, if it is. */
+export function answerRejection(
+  partState: PartState,
   candidate: string,
-  now: Date,
-): string | undefined {
-  const partState = state.puzzles[puzzleId]?.parts[partNumber];
-  if (partState?.status !== "proposed") return "part-not-proposed";
-  if (partState.proposed?.answer !== candidate) return "answer-not-proposed";
+): "duplicate-answer" | "contradicts-too-low" | "contradicts-too-high" | undefined {
   if (partState.submissions.some((s) => s.answer === candidate && !UNJUDGED.includes(s.verdict))) {
     return "duplicate-answer";
   }
@@ -231,6 +225,22 @@ export function submissionBlocker(
       return "contradicts-too-high";
     }
   }
+  return undefined;
+}
+
+/** Reasons a proposed answer may not be submitted now; undefined when allowed. */
+export function submissionBlocker(
+  state: RunState,
+  puzzleId: PuzzleId,
+  partNumber: PartNumber,
+  candidate: string,
+  now: Date,
+): string | undefined {
+  const partState = state.puzzles[puzzleId]?.parts[partNumber];
+  if (partState?.status !== "proposed") return "part-not-proposed";
+  if (partState.proposed?.answer !== candidate) return "answer-not-proposed";
+  const rejection = answerRejection(partState, candidate);
+  if (rejection) return rejection;
   if (state.submitNotBefore && now.getTime() < Date.parse(state.submitNotBefore)) {
     return "cooldown";
   }

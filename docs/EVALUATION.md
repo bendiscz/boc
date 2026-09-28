@@ -86,4 +86,4 @@ A supervised live evaluation of harder, later days, run by the agent with the op
   - The partial output of a stopped response is kept privately in `cutoff-partial.json`.
   - The retry prompt now says why the previous attempt failed.
 - **A killed run left a run-state lock that no command could clear.** `boc ledger break-lock` now clears both the ledger and the run-state lock of a dead local process.
-- **Re-proposing a rejected answer wastes an attempt.** Found with luna and seen again in the rerun. Not yet fixed; see PLAN.md.
+- **Re-proposing a rejected answer wasted an attempt.** Found with luna and seen again in the rerun. Fixed: `propose_answer` refuses an answer already judged wrong, or one that contradicts a too-high or too-low bound, and returns the reason to the model as a tool error. The attempt continues, and the refusal is logged.

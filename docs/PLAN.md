@@ -22,9 +22,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **stop wasting attempts on already-rejected answers.** `propose_answer` should reject, back to the model and within the same attempt, an answer that was already judged wrong or that contradicts a known too-high/too-low bound. Add a regression test. This was found in the luna benchmark (EVALUATION.md).
-
-After that, choose with the operator:
+Next concrete task: **to be decided with the operator.** The luna vs sol benchmark is done (keep sol), and its defects are fixed. Candidates:
 
 - milestone 7 readiness (rechecks, live drills);
 - the parallel "agreement" design (open question below);
@@ -342,3 +340,4 @@ Benchmark completion and runaway fixes (2026-09-28):
 - After the operator re-authorized Codex, the sol replays finished: 2025 days 10–12 in `var/bench/sol-2025b` and 2024 days 13–25; luna's two failed days were rerun in `var/bench/luna-2024b`. The comparison is in EVALUATION.md.
 - Runaway responses are now stopped after 120 s, or after 60 s of stall, and settled like the credit cutoff. Attempts have a 10-minute deadline between turns. Cut-off partial output is kept privately, and the retry prompt explains the previous failure. `break-lock` also clears the run-state lock.
 - `npm run check`: 151 offline tests passed. The new tests cover: slow and stalled streams, including an upstream that ignores the abort; a stalled response followed by an informed retry; the attempt deadline; and the run-state lock.
+- Known-wrong proposals (already judged wrong, or contradicting a too-high/too-low bound) are refused back to the model within the attempt; the rule is shared with the submission check (`answerRejection`). `npm run check`: 152 offline tests passed.
