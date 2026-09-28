@@ -60,6 +60,12 @@ interface GuardedStreamsOptions {
    * trusted orchestrator stores it beside the transcript; never the model or logs).
    */
   onProviderError?: (raw: string) => void;
+  /** Wall-clock limit per response; a stopped response settles like the credit cutoff. */
+  maxResponseMs?: number;
+  /** Longest gap between stream events before the response counts as stalled. */
+  stallMs?: number;
+  /** Partial output of a response the guard stopped, for private diagnostics only. */
+  onCutoff?: (partial: AssistantMessage, reason: string) => void;
   /** Notified once when an uncertain outcome permanently faults this guard. */
   onFault?: () => void;
   /**
@@ -78,6 +84,13 @@ type RequestOptions = SimpleStreamOptions;
 
 /** Error text of a response the guard stopped at its credit estimate. */
 export const CUTOFF_MESSAGE = "Response stopped: it exceeded its credit estimate.";
+
+/** Error text of a response the guard stopped at its time limit. */
+export const RESPONSE_TIME_MESSAGE = "Response stopped: it exceeded its time limit.";
+/** Error text of a response the guard stopped because the stream stalled. */
+export const STALL_MESSAGE = "Response stopped: the stream stalled.";
+/** Every guard-imposed stop of a runaway response. */
+export const RUNAWAY_MESSAGES = [CUTOFF_MESSAGE, RESPONSE_TIME_MESSAGE, STALL_MESSAGE] as const;
 
 /** Prefix of a provider usage-limit refusal, as exposed to callers. */
 export const USAGE_LIMIT_MESSAGE = "Provider usage limit reached.";
@@ -245,8 +258,59 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
         );
         let started = false;
         let partial: AssistantMessage | undefined;
+        // Time limits (D016 runaway protection): the credit cutoff alone lets a slow
+        // stream run for many minutes. A limit stops the response like the cutoff.
+        let stoppedFor: string | undefined;
+        let wake: () => void = () => {};
+        const stopped = new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+        const stop = (why: string) => {
+          if (stoppedFor) return;
+          stoppedFor = why;
+          cutoff.abort(new Error(why));
+          wake();
+        };
+        const timers: ReturnType<typeof setTimeout>[] = [];
+        let stall: ReturnType<typeof setTimeout> | undefined;
+        const armStall = () => {
+          if (!config.stallMs) return;
+          if (stall) clearTimeout(stall);
+          stall = setTimeout(() => stop(STALL_MESSAGE), config.stallMs);
+        };
+        if (config.maxResponseMs) {
+          timers.push(setTimeout(() => stop(RESPONSE_TIME_MESSAGE), config.maxResponseMs));
+        }
+        armStall();
+        const settleStopped = async (why: string) => {
+          if (
+            typeof reservation?.settleCutoff !== "function" ||
+            typeof reservation.exceeds !== "function"
+          ) {
+            throw new Error("Stopped response cannot be settled.");
+          }
+          settling = true;
+          // Billed tokens up to the stop are unknown: settled like the credit cutoff.
+          await reservation.settleCutoff(structuredClone(partial ?? failure(false)));
+          try {
+            if (partial) config.onCutoff?.(structuredClone(partial), why);
+          } catch {
+            // Observers must not affect the boundary.
+          }
+          output.push({ type: "error", reason: "error", error: failure(false, why) });
+          output.end();
+        };
+        const iterator = upstream[Symbol.asyncIterator]();
         try {
-          for await (const event of upstream) {
+          for (;;) {
+            const next = await Promise.race([iterator.next(), stopped.then(() => undefined)]);
+            if (stoppedFor && !signal?.aborted) {
+              await settleStopped(stoppedFor);
+              return;
+            }
+            if (!next || next.done) break;
+            const event = next.value;
+            armStall();
             if (event.type === "done" || event.type === "error") {
               const message = event.type === "done" ? event.message : event.error;
               if (event.type === "done" && !started) throw new Error("Invalid stream protocol.");
@@ -288,20 +352,18 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
               typeof reservation.settleCutoff === "function" &&
               reservation.exceeds(structuredClone(partial))
             ) {
+              stoppedFor = CUTOFF_MESSAGE;
               cutoff.abort(new Error("Credit estimate exceeded."));
-              settling = true;
-              // Settlement failure here falls through to the held/faulted path.
-              await reservation.settleCutoff(structuredClone(partial));
-              const stopped = failure(false);
-              stopped.errorMessage = CUTOFF_MESSAGE;
-              output.push({ type: "error", reason: "error", error: stopped });
-              output.end();
+              await settleStopped(CUTOFF_MESSAGE);
               return;
             }
             output.push(event);
           }
         } finally {
+          for (const timer of timers) clearTimeout(timer);
+          if (stall) clearTimeout(stall);
           signal?.removeEventListener("abort", forward);
+          if (stoppedFor) void iterator.return?.().catch(() => {});
         }
         throw new Error("Transport ended without a terminal receipt.");
       } catch {

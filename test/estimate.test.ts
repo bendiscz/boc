@@ -181,3 +181,73 @@ test("a response streaming past its estimate is cut off and settled as estimated
   );
   assert.equal(ledger.status().held.length, 0);
 });
+
+test("slow and stalled responses stop at their time limits and settle like the cutoff", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "boc-timeout-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const ledger = await CreditLedger.open({ directory: join(dir, "ledger"), config });
+  t.after(() => ledger.close().catch(() => {}));
+  const admission = createLedgerAdmission({
+    ledger,
+    subscription: "sub",
+    model: FAKE_MODEL.id,
+    puzzle: puzzleId(1),
+    meter: createEstimatingMeter({ settings, enforcesMaxTokens: true }),
+  });
+  let mode: "slow" | "stalled" | "normal" = "slow";
+  let aborted = false;
+  const upstream = (_m: unknown, _c: unknown, options?: { signal?: AbortSignal }) => {
+    if (mode === "normal") return responseStream(message());
+    const stream = createAssistantMessageEventStream();
+    const partial: AssistantMessage = message({ content: [{ type: "text", text: "" }] });
+    stream.push({ type: "start", partial });
+    options?.signal?.addEventListener("abort", () => {
+      aborted = true;
+    });
+    if (mode === "slow") {
+      void (async () => {
+        // Tiny deltas far below the credit estimate, forever until aborted.
+        while (!options?.signal?.aborted) {
+          const block = partial.content[0];
+          if (block?.type === "text") block.text += "y";
+          stream.push({ type: "text_delta", contentIndex: 0, delta: "y", partial });
+          await new Promise((r) => setTimeout(r, 5));
+        }
+        stream.end();
+      })();
+    }
+    // "stalled": no further events and it ignores the abort; the guard must not hang.
+    return stream;
+  };
+  const cutoffs: string[] = [];
+  const guard = createGuardedStreams({
+    model: FAKE_MODEL,
+    admission,
+    transport: { stream: upstream, streamSimple: upstream },
+    maxResponseMs: 150,
+    stallMs: 60,
+    onCutoff: (partial, reason) => {
+      const block = partial.content[0];
+      cutoffs.push(`${reason} ${block?.type === "text" ? block.text.length > 0 : "?"}`);
+    },
+  });
+  const slow = await guard.stream(FAKE_MODEL, context(), { maxTokens: 50 }).result();
+  assert.equal(slow.errorMessage, "Response stopped: it exceeded its time limit.");
+  assert.ok(aborted, "the upstream request was aborted");
+  mode = "stalled";
+  const stalled = await guard.stream(FAKE_MODEL, context(), { maxTokens: 50 }).result();
+  assert.equal(stalled.errorMessage, "Response stopped: the stream stalled.");
+  assert.deepEqual(cutoffs, [
+    "Response stopped: it exceeded its time limit. true",
+    "Response stopped: the stream stalled. false",
+  ]);
+  assert.equal(ledger.status().held.length, 0, "both settled, not held");
+  const journal = await readFile(join(dir, "ledger/journal.jsonl"), "utf8");
+  assert.equal(journal.match(/"evidence":"cutoff:estimate"/g)?.length, 2);
+  mode = "normal";
+  assert.equal(
+    (await guard.stream(FAKE_MODEL, context()).result()).stopReason,
+    "stop",
+    "not a fault: the same guard keeps working",
+  );
+});

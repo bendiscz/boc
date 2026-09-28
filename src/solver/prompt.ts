@@ -33,6 +33,8 @@ export interface TaskPromptOptions {
   readonly partState: PartState;
   readonly part1Answer?: string;
   readonly copiedFiles?: readonly string[];
+  /** Why the previous attempt for this part ended without an answer, if known. */
+  readonly previousAttempt?: "runaway-response" | "time-limit";
 }
 
 export function taskPrompt(options: TaskPromptOptions): string {
@@ -52,6 +54,17 @@ export function taskPrompt(options: TaskPromptOptions): string {
   if (options.copiedFiles && options.copiedFiles.length > 0) {
     lines.push(
       `Files from your previous work are in the workspace: ${options.copiedFiles.join(", ")}.`,
+    );
+  }
+  if (options.previousAttempt === "runaway-response") {
+    lines.push(
+      "",
+      "Your previous attempt was stopped because one response grew far too long. Work in small steps: keep each response and each file write short, and never paste the input or long data into a response.",
+    );
+  } else if (options.previousAttempt === "time-limit") {
+    lines.push(
+      "",
+      "Your previous attempt ran out of time without an answer. Choose a simpler, more direct approach.",
     );
   }
   const rejected = options.partState.submissions.filter((s) => VERDICT_TEXT[s.verdict]);

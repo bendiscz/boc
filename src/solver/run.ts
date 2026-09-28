@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model, ProviderStreams } from "@earendil-works/pi-ai";
 import { puzzleText } from "../aoc/parse.ts";
@@ -6,9 +6,9 @@ import type { AocService } from "../aoc/service.ts";
 import { LedgerError } from "../budget/ledger.ts";
 import {
   type Admission,
-  CUTOFF_MESSAGE,
   createGuardedStreams,
   PROVIDER_REFUSALS,
+  RUNAWAY_MESSAGES,
 } from "../pi/guarded-streams.ts";
 import type { Executor } from "../sandbox/executor.ts";
 import { Workspace } from "../sandbox/workspace.ts";
@@ -49,6 +49,12 @@ export interface SolveOptions {
   readonly binding: (part: PartNumber, attempt: number) => SolverBinding | undefined;
   readonly maxAttemptsPerPart?: number;
   readonly maxTurnsPerAttempt?: number;
+  /** Wall-clock limit per model response (default 120 s; normal turns took under 40 s). */
+  readonly maxResponseMs?: number;
+  /** Longest silence within a response stream (default 60 s). */
+  readonly stallMs?: number;
+  /** Attempt deadline, checked between turns so no call is ever aborted (default 10 min). */
+  readonly maxAttemptMs?: number;
   readonly now?: () => Date;
   readonly sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   readonly signal?: AbortSignal;
@@ -229,6 +235,9 @@ async function runAttempt(
   let denied = false;
   let faulted = false;
   const providerErrors: string[] = [];
+  const cutoffs: { reason: string; content: unknown }[] = [];
+  const previousAttempt =
+    attempt > 1 ? await previousAttemptEnding(options, part, attempt - 1) : undefined;
   const admission: Admission = {
     reserve: async (request) => {
       try {
@@ -250,7 +259,14 @@ async function runAttempt(
     onProviderError: (raw) => {
       providerErrors.push(raw);
     },
+    onCutoff: (partial, reason) => {
+      cutoffs.push({ reason, content: partial.content });
+    },
+    maxResponseMs: options.maxResponseMs ?? DEFAULT_MAX_RESPONSE_MS,
+    stallMs: options.stallMs ?? DEFAULT_STALL_MS,
   });
+  const attemptStart = Date.now();
+  let timedOut = false;
   const tools = createSolverTools({
     workspace,
     executor: options.executor,
@@ -262,7 +278,13 @@ async function runAttempt(
     systemPrompt: SOLVER_SYSTEM_PROMPT,
     tools: tools.tools,
     maxTurns: options.maxTurnsPerAttempt ?? 40,
-    shouldStop: () => tools.proposed() !== undefined,
+    shouldStop: () => {
+      if (tools.proposed() !== undefined) return true;
+      if (Date.now() - attemptStart < (options.maxAttemptMs ?? DEFAULT_MAX_ATTEMPT_MS))
+        return false;
+      timedOut = true;
+      return true;
+    },
   });
   const abort = () => agent.abort();
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -283,6 +305,7 @@ async function runAttempt(
           ? { part1Answer: store.state.puzzles[puzzle]?.parts[1].solvedAnswer as string }
           : {}),
         copiedFiles: copied,
+        ...(previousAttempt ? { previousAttempt } : {}),
       }),
     );
   } catch {
@@ -294,6 +317,18 @@ async function runAttempt(
       join(attemptDir, "transcript.json"),
       `${JSON.stringify(agent.state.messages, null, 1)}\n`,
     ).catch(() => log("transcript could not be written"));
+    if (cutoffs.length > 0) {
+      // Private diagnostics: what a stopped runaway response contained.
+      await writeFileAtomic(
+        join(attemptDir, "cutoff-partial.json"),
+        `${JSON.stringify(cutoffs, null, 1)}\n`,
+      ).catch(() => {});
+    }
+    if (timedOut) {
+      await writeFileAtomic(join(attemptDir, "time-limit"), "attempt deadline reached\n").catch(
+        () => {},
+      );
+    }
     if (providerErrors.length > 0) {
       // Private diagnostics; the log and the model only see a safe category.
       await writeFileAtomic(
@@ -305,11 +340,9 @@ async function runAttempt(
 
   // Evidence for tuning the output cap (EVALUATION.md): a cap that is too low
   // shows up as truncated responses and failed attempts.
-  const capped = agent.state.messages.filter(
-    (m) =>
-      m.role === "assistant" && (m.stopReason === "length" || m.errorMessage === CUTOFF_MESSAGE),
-  ).length;
-  if (capped > 0) log(`attempt ${attempt}: ${capped} response(s) hit the output cap`);
+  const capped = agent.state.messages.filter(isRunaway).length;
+  if (capped > 0) log(`attempt ${attempt}: ${capped} response(s) hit the output cap or time limit`);
+  if (timedOut) log(`attempt ${attempt}: attempt time limit reached`);
 
   const answer = tools.proposed();
   const where = { type: "attempt-finished" as const, puzzle, part, attempt };
@@ -348,6 +381,42 @@ async function runAttempt(
   }
   log(`attempt ${attempt} ended without an answer${agentError ? " (error)" : ""}`);
   return undefined;
+}
+
+const DEFAULT_MAX_RESPONSE_MS = 120_000;
+const DEFAULT_STALL_MS = 60_000;
+const DEFAULT_MAX_ATTEMPT_MS = 600_000;
+
+function isRunaway(m: { role: string; stopReason?: string; errorMessage?: string }): boolean {
+  return (
+    m.role === "assistant" &&
+    (m.stopReason === "length" || RUNAWAY_MESSAGES.some((message) => m.errorMessage === message))
+  );
+}
+
+/** Why an earlier attempt ended, from its private artifacts (restart-safe). */
+async function previousAttemptEnding(
+  options: SolveOptions,
+  part: PartNumber,
+  attempt: number,
+): Promise<"runaway-response" | "time-limit" | undefined> {
+  const dir = options.paths.attempt(options.puzzle, part, attempt);
+  try {
+    const messages = JSON.parse(await readFile(join(dir, "transcript.json"), "utf8")) as {
+      role: string;
+      stopReason?: string;
+      errorMessage?: string;
+    }[];
+    if (Array.isArray(messages) && messages.some(isRunaway)) return "runaway-response";
+  } catch {
+    // No readable transcript: nothing known.
+  }
+  try {
+    await readFile(join(dir, "time-limit"));
+    return "time-limit";
+  } catch {
+    return undefined;
+  }
 }
 
 /**

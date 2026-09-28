@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type { TranscriptContext } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { AocClient } from "../src/aoc/client.ts";
 import { puzzleText } from "../src/aoc/parse.ts";
 import { AocService } from "../src/aoc/service.ts";
@@ -46,7 +46,9 @@ const config = (perPuzzle: string) =>
     ],
   });
 
-type Step = (context: TranscriptContext) => ReturnType<typeof message>;
+type Step = (
+  context: TranscriptContext,
+) => ReturnType<typeof message> | ReturnType<typeof createAssistantMessageEventStream>;
 const tool = (name: string, args: Record<string, string | string[]>) =>
   message({
     content: [{ type: "toolCall", id: `t-${name}`, name, arguments: args }],
@@ -59,7 +61,12 @@ const propose =
 
 async function fixture(
   t: test.TestContext,
-  options: { perPuzzle?: string; aoc: string[]; model: Step[] },
+  options: {
+    perPuzzle?: string;
+    aoc: string[];
+    model: Step[];
+    solve?: Partial<Parameters<typeof solvePuzzle>[0]>;
+  },
 ) {
   const root = await mkdtemp(join(tmpdir(), "boc-loop-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -98,7 +105,8 @@ async function fixture(
     }
     const step = options.model.shift();
     if (!step) throw new Error("model script exhausted");
-    return responseStream(step(context));
+    const response = step(context);
+    return "role" in response ? responseStream(response) : response;
   };
   const binding = (): SolverBinding => ({
     subscription: "sub",
@@ -110,6 +118,7 @@ async function fixture(
       puzzle: puzzleId(1),
       meter: {
         maxCharge: () => parseCredits("1"),
+        partialCharge: () => parseCredits("0"),
         actualCharge: async () => ({ credits: parseCredits("1"), receipt: "receipt:fake" }),
       },
     }),
@@ -142,6 +151,7 @@ async function fixture(
         now += ms;
       },
       onEvent: (e) => events.push(e),
+      ...options.solve,
     });
   return { root, paths, store, ledger, aocCalls, prompts, sleeps, events, solve };
 }
@@ -382,4 +392,49 @@ test("a provider usage limit stops the part after one attempt, keeping the rest"
     "utf8",
   );
   assert.match(diagnostics, /business plan/, "raw text kept only in private diagnostics");
+});
+
+test("a stalled response is stopped, kept privately, and the retry is told why", async (t) => {
+  const stalled = () => {
+    const stream = createAssistantMessageEventStream();
+    stream.push({
+      type: "start",
+      partial: message({ content: [{ type: "text", text: "synthetic runaway" }] }),
+    });
+    return stream; // never ends
+  };
+  const f = await fixture(t, {
+    aoc: [page(1, [], 1), reply("That's the right answer!"), page(1, ["7"])],
+    model: [stalled, propose("7")],
+    solve: { stallMs: 30 },
+  });
+  assert.equal((await f.solve()).part1, "solved");
+  assert.ok(
+    f.events.some((e) => /attempt 1: 1 response\(s\) hit the output cap or time limit/.test(e)),
+  );
+  const partial = await readFile(
+    join(f.paths.attempt(puzzleId(1), 1, 1), "cutoff-partial.json"),
+    "utf8",
+  );
+  assert.match(partial, /the stream stalled/);
+  assert.match(partial, /synthetic runaway/);
+  assert.match(
+    f.prompts[1] ?? "",
+    /previous attempt was stopped because one response grew far too long/,
+  );
+  assert.equal(f.ledger.status().held.length, 0);
+});
+
+test("the attempt deadline ends an attempt between turns; the retry is told", async (t) => {
+  const f = await fixture(t, {
+    aoc: [page(1, [], 1), reply("That's the right answer!"), page(1, ["7"])],
+    model: [() => tool("list_files", {}), () => tool("list_files", {}), propose("7")],
+    solve: { maxAttemptMs: 0 },
+  });
+  // With a zero deadline every attempt ends after its first turn; attempt 3 proposes.
+  assert.equal((await f.solve()).part1, "solved");
+  assert.equal(f.store.state.puzzles["day-01"]?.parts[1].attempts, 3);
+  assert.ok(f.events.some((e) => /attempt 1: attempt time limit reached/.test(e)));
+  assert.match(f.prompts[1] ?? "", /previous attempt ran out of time/);
+  assert.equal(f.store.state.puzzles["day-01"]?.parts[1].submissions.length, 1);
 });
