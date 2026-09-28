@@ -4,7 +4,7 @@ Inspected on **2026-09-27**. This is a documentation/source review plus offline 
 
 ## Decision (updated by D016): best-effort adapters after calibration
 
-**Status 2026-09-27:** GitHub Copilot and ChatGPT/Codex passed calibration and are enabled (see their calibration results below). Anthropic is deferred (D019).
+**Status 2026-09-27:** GitHub Copilot and ChatGPT/Codex passed calibration and are enabled (see their calibration results below). Anthropic was dropped by the operator on 2026-09-28 (D020); its findings below are kept as history.
 
 The hard-credit contract below was the original gate. Neither subscription met it. On 2026-09-27 the operator relaxed it to best-effort limits (D016): a padded estimate is reserved before each call, actual charges are recorded with their source, runaway responses are cut off, and the overshoot tolerance is bounded. An adapter becomes eligible once it exists and passes a supervised calibration run; see "Calibration protocol" below. No adapter exists yet, so `src/providers/readiness.ts` still reports every provider as ineligible. The evidence below explains why the limits are best effort and not guaranteed.
 

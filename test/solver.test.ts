@@ -292,3 +292,24 @@ test("a proposal made alongside other tool calls still ends the run; only one is
   assert.equal(f.contexts.length, 1, "no model call after the proposal turn");
   assert.deepEqual(f.proposals, ["5"]);
 });
+
+test("workspace modes let the container read files even under a strict umask", async (t) => {
+  const { mkdtemp, rm, stat } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const root = await mkdtemp(join(tmpdir(), "boc-umask-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const previous = process.umask(0o077);
+  try {
+    const ws = await Workspace.create(join(root, "store", "ws"));
+    await ws.place("input.txt", "synthetic\n");
+    await ws.write("src/solve.py", "print(1)\n");
+    const mode = async (path: string) => (await stat(join(ws.root, path))).mode & 0o777;
+    assert.equal(await mode("."), 0o755);
+    assert.equal(await mode("input.txt"), 0o644);
+    assert.equal(await mode("src"), 0o755);
+    assert.equal(await mode("src/solve.py"), 0o644);
+    assert.equal((await stat(join(root, "store"))).mode & 0o777, 0o700, "parents stay private");
+  } finally {
+    process.umask(previous);
+  }
+});

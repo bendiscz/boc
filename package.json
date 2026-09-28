@@ -20,7 +20,8 @@
     "format": "biome check --write .",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "dev": "node src/main.ts",
-    "test:executor": "node test/sandbox-executor.ts"
+    "test:executor": "node test/sandbox-executor.ts",
+    "test:linux": "sh sandbox/linux-probe.sh"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.87.1",

@@ -6,7 +6,7 @@
 - **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance.
 - **Providers:**
   - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md has both results).
-  - Anthropic is deferred (D019): the policy forbids subscription OAuth, and there is no API key.
+  - Solving model: `gpt-6-sol`, with no parallel solving. Anthropic is dropped (D020).
 - **AoC account.** All of AoC 2025 (12 days, 24 stars) is solved on the dedicated account. So are AoC 2024 days 13–25 (25 stars; day 25 part 2 needs days 1–12), via `var/eval-2024-copilot.config.json` (days 13–19) and `var/eval-2024-codex.config.json` (days 20–25). Days 1–2 and 5–8 were solved via Copilot, days 3–4 and 9–12 via Codex. The days 5–12 rehearsal results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
 - **Private local setup** (ignored by Git):
   - credentials in `.secrets/`: the AoC cookie, `copilot.json`, and `codex.json`;
@@ -16,7 +16,7 @@
   - Codex has spent 6.63 of 300 Codex credits.
   - No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`.
-- **Checks.** `npm run check`: 144 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 152 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
@@ -25,33 +25,17 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGEN
 Next concrete task: **to be decided with the operator.** The luna vs sol benchmark is done (keep sol), and its defects are fixed. Candidates:
 
 - milestone 7 readiness (rechecks, live drills);
-- the parallel "agreement" design (open question below);
 - the remaining open items.
 
 Pending operator action:
 
 - `var/bench/sol-2024` holds a 3.39-credit reservation from the call that was in flight when the run was interrupted. Its charge is unknown. Settle it with `boc ledger settle` once the Codex usage dashboard gives evidence, or leave it held; it counts against that bench config only.
 
-Open question: **solver model choice and parallel solving** (raised by the operator on 2026-09-28). Model choice has been measured: keep `gpt-6-sol`; luna was slower and less reliable (EVALUATION.md, "Model benchmark"). Parallel solving is still undecided.
-
-- **Question.** Is `gpt-6-sol` the right solving model, given that the goal is the correct answer as soon as possible? A faster, simpler model may reply sooner but fail on harder puzzles. Would solving one part with several different models in parallel give better results?
-- **Evidence so far.** On AoC 2025 and AoC 2024 days 13–25, `gpt-6-sol` took roughly 8–90 s per part, with no wrong answers (41 of 41 parts on the first submission). A wrong answer costs at least a 1-minute lockout plus a retry. In past-mode runs the wall time is dominated by the AoC request brake, not the model.
-- **Options to evaluate:**
-  - an escalation ladder: a fast model first, then `gpt-6-sol` on failure or timeout;
-  - a race: parallel models, first proposal wins;
-  - agreement: parallel models, submit early only when two independent answers agree, otherwise wait for the stronger model.
-- **Constraints any design must respect:**
-  - Credits are multiplied by N, but Copilot and Codex are separate pools, so a cross-provider race spends from separate allowances.
-  - Every concurrent call is reserved (D016).
-  - Submissions stay serialized with one proposal at a time, because wrong answers escalate lockouts.
-  - The run state currently allows only one active attempt per part, so parallel attempts need a DECISIONS.md entry.
-- **Measure before deciding.** Replay already-solved puzzles against the answers AoC accepted (recorded in the private run state), with no AoC submission. Record per-model latency, accuracy, and credits on the same puzzles. The solver must never see the recorded answer.
+Decided (D020, 2026-09-28): keep `gpt-6-sol` as the solving model, with no parallel solving; Anthropic is dropped.
 
 Other open items:
 
-- Anthropic, once an API key exists (D019);
-- hash-pinned `uv`;
-- a Linux executor probe.
+- an amd64 run of `npm run test:linux` (arm64 passed), and a bare-metal Linux host run before the event.
 
 Live calls are allowed only through calibrated adapters (Copilot, Codex) or supervised `--calibrate` runs the operator starts; the orchestrator never makes live provider or AoC calls during development sessions on its own. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -341,3 +325,9 @@ Benchmark completion and runaway fixes (2026-09-28):
 - Runaway responses are now stopped after 120 s, or after 60 s of stall, and settled like the credit cutoff. Attempts have a 10-minute deadline between turns. Cut-off partial output is kept privately, and the retry prompt explains the previous failure. `break-lock` also clears the run-state lock.
 - `npm run check`: 151 offline tests passed. The new tests cover: slow and stalled streams, including an upstream that ignores the abort; a stalled response followed by an informed retry; the attempt deadline; and the run-state lock.
 - Known-wrong proposals (already judged wrong, or contradicting a too-high/too-low bound) are refused back to the model within the attempt; the rule is shared with the submission check (`answerRejection`). `npm run check`: 152 offline tests passed.
+
+Operator decisions and hash-pinned uv (2026-09-28):
+
+- D020: keep `gpt-6-sol`, no parallel solving, Anthropic dropped. The plan, AGENTS, README, REQUIREMENTS, OPERATOR, and FEASIBILITY status lines are updated.
+- `uv` is now installed from `sandbox/uv-requirements.txt` with `--require-hashes`, and the `UV_VERSION` build argument is removed. The image was rebuilt (arm64, about 19 min through the proxy; an earlier attempt failed once with a transient `cannot allocate memory` in Docker Desktop). Checks: the downloaded wheel hash matched the pin; an altered hash was refused (offline negative control); no build CA certificate is in the image; the executor probe with toolchains passed. All private configs point to the new image ID.
+- Linux executor probe (`npm run test:linux`, `sandbox/linux-probe.sh`): a native Linux daemon in a digest-pinned `docker:dind` container, reachable only on an internal network, with the probe running as UID 1000 on ext4. It found a real defect: under umask 077 the workspace files were `0600`, unreadable by the container's UID. Fixed with explicit `fchmod`/`chmod`, and a regression test was added. Both umasks pass on arm64. `npm run check`: 153 offline tests passed.

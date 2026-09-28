@@ -3,19 +3,17 @@
 # at solve time: containers run with --network=none.
 #
 # Integrity: the base is pinned by digest; Debian packages are verified by apt's
-# signed repositories; uv is pinned by version from PyPI. Pin uv with --require-hashes
-# before relying on this for an event (see docs/SANDBOX.md).
+# signed repositories; uv is installed from PyPI only if its wheel matches a hash in
+# uv-requirements.txt (pip --require-hashes; see docs/SANDBOX.md).
 ARG BASE=node:24-trixie-slim@sha256:ebada56d5c601bd80f2af1cc3d101b1b730027d2395ab6d15402a2a5a83e4b51
 FROM ${BASE}
-
-ARG UV_VERSION
-RUN test -n "${UV_VERSION}" || (echo "UV_VERSION build argument is required" >&2; exit 1)
 
 # Debian packages come over apt's signed (HTTP) repositories. The optional
 # build-only CA bundle for TLS-intercepting networks (BuildKit secret "extra_ca")
 # is combined with the system bundle in /tmp for the PyPI step only and is not
 # stored in any image layer.
 RUN --mount=type=secret,id=extra_ca,required=false \
+    --mount=type=bind,source=uv-requirements.txt,target=/tmp/boc-uv-requirements.txt \
     set -eu; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -28,7 +26,8 @@ RUN --mount=type=secret,id=extra_ca,required=false \
       cat /etc/ssl/certs/ca-certificates.crt /run/secrets/extra_ca > "$CA"; \
     fi; \
     PIP_CERT="$CA" SSL_CERT_FILE="$CA" \
-      python3 -m pip install --no-cache-dir --break-system-packages "uv==${UV_VERSION}"; \
+      python3 -m pip install --no-cache-dir --break-system-packages \
+        --require-hashes --only-binary=:all: --no-deps -r /tmp/boc-uv-requirements.txt; \
     rm -f /tmp/boc-build-ca.pem; \
     apt-get purge -y python3-pip; \
     apt-get autoremove -y; \

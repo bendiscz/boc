@@ -127,3 +127,11 @@ Implemented adapters start in `CALIBRATION_ADAPTERS` (`src/providers/adapter.ts`
 On 2026-09-27 the operator chose to skip Anthropic for now: the compliant API-key path needs Claude Console access that is not available. Anthropic stays in the configuration schema but has no adapter, and `boc login` refuses Anthropic because subscription OAuth is prohibited for third-party tools (FEASIBILITY.md).
 
 Codex uses the operator's own ChatGPT Business sign-in through pi-ai's Codex provider. The official Codex docs describe ChatGPT sign-in for Codex apps and do not prohibit this, but they do not document a third-party contract either (FEASIBILITY.md). The Copilot and Codex adapters share `src/providers/oauth-adapter.ts`. Codex does not enforce output caps, so its estimates use the assumed maximum and rely on the streaming cutoff. Codex joins `CALIBRATION_ADAPTERS`, and moves to production only after a passing calibration.
+
+## D020 — Two providers, one solving model, no parallel solving
+
+On 2026-09-28, after the luna vs sol replay benchmark (EVALUATION.md), the operator decided:
+
+- **Solving model:** `gpt-6-sol` is the solving model. It was faster and more reliable than `gpt-6-luna`, and its higher credit cost stays comfortably within budget.
+- **No parallel solving:** there is no agreement, race, or escalation ladder across models. The single-attempt-per-part run state (D012) stays.
+- **Anthropic dropped:** Anthropic support is no longer planned. This supersedes the provider scope of D017 and D019. BoC's providers are GitHub Copilot and ChatGPT/Codex. The dormant `anthropic` value in the configuration schema has no adapter, and `boc login` refuses it.

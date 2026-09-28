@@ -1,6 +1,6 @@
 # Operator guide
 
-This guide covers installing, configuring, running, and recovering BoC. **GitHub Copilot and ChatGPT/Codex are enabled** (both calibrated 2026-09-27). Anthropic is deferred until an API key is available (D019). For Codex, BoC counts usage within your plan's included allowance at credit rates, so its limits are conservative there. Everything else described here works offline today.
+This guide covers installing, configuring, running, and recovering BoC. **GitHub Copilot and ChatGPT/Codex are enabled** (both calibrated 2026-09-27). Anthropic is not supported (D020). For Codex, BoC counts usage within your plan's included allowance at credit rates, so its limits are conservative there. Everything else described here works offline today.
 
 ## Prerequisites
 

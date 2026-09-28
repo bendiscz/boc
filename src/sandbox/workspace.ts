@@ -45,9 +45,10 @@ export class Workspace {
   readonly #protected: ReadonlySet<string>;
 
   /**
-   * Create an attempt workspace. The directory itself is 0755 so the container's
-   * unprivileged UID can read it on Linux bind mounts; confidentiality comes from
-   * the private (0700) storage directories above it.
+   * Create an attempt workspace. The directory itself is 0755, and its files 0644,
+   * set explicitly regardless of the umask, so the container's unprivileged UID can
+   * read them on Linux bind mounts. Confidentiality comes from the private (0700)
+   * storage directories above it.
    */
   static async create(root: string, protectedFiles: readonly string[] = []): Promise<Workspace> {
     await mkdir(dirname(root), { recursive: true, mode: 0o700 });
@@ -72,6 +73,10 @@ export class Workspace {
         if (error instanceof WorkspaceError) throw error;
         if (!create) throw new WorkspaceError("No such file.");
         await mkdir(current, { mode: 0o755 }).catch(() => {
+          throw new WorkspaceError("Cannot create directory.");
+        });
+        // The umask may strip the modes the container needs (Linux bind mounts).
+        await chmod(current, 0o755).catch(() => {
           throw new WorkspaceError("Cannot create directory.");
         });
       }
@@ -100,6 +105,7 @@ export class Workspace {
       throw new WorkspaceError("Cannot write file.");
     });
     try {
+      await handle.chmod(0o644);
       await handle.writeFile(content, "utf8");
     } finally {
       await handle.close();
@@ -116,6 +122,8 @@ export class Workspace {
       0o644,
     );
     try {
+      // Explicit, not via the umask: the container's UID must read it on Linux.
+      await handle.chmod(0o644);
       await handle.writeFile(content, "utf8");
     } finally {
       await handle.close();

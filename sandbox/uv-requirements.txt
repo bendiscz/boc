@@ -1,0 +1,8 @@
+# uv for the solver image, installed with pip --require-hashes --only-binary=:all: --no-deps.
+# uv has no Python dependencies. Hashes: PyPI JSON API for uv 0.8.22 (fetched 2026-09-28),
+# limited to the glibc Linux wheels for amd64 and arm64. To upgrade, replace the version
+# and every hash from https://pypi.org/pypi/uv/<version>/json (see docs/SANDBOX.md).
+uv==0.8.22 \
+    --hash=sha256:8efec4ef5acddc35f0867998c44e0b15fc4dace1e4c26d01443871a2fbb04bf6 \
+    --hash=sha256:d6a33bd5309f8fb77d9fc249bb17f77a23426e6153e43b03ca1cd6640f0a423d \
+    --hash=sha256:9eb3b4abfa25e07d7e1bb4c9bb8dbbdd51878356a37c3c4a2ece3d68d4286f28

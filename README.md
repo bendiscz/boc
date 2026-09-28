@@ -8,7 +8,7 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 ## Planned capabilities
 
-- GitHub Enterprise Copilot (first), ChatGPT Business/Codex, and Anthropic integrations, subject to actual account access and provider policy.
+- GitHub Enterprise Copilot and ChatGPT Business/Codex integrations, subject to actual account access and provider policy. (Anthropic was dropped by the operator, D020.)
 - Effective use of multiple available subscriptions, with separate credit accounting and budget-aware scheduling.
 - Configurable per-puzzle and event-wide AI-credit limits, including subscription-specific limits.
 - Python (`uv`), Node.js, Go, and Rust solution toolchains.
@@ -19,7 +19,7 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 ## Status
 
-The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an AoC transport, a constrained solver agent loop with a two-part solve orchestrator and budget-aware subscription selection, a networkless Docker executor with a toolchain image, and offline tests. GitHub Copilot passed a supervised live calibration on 2026-09-27 (AoC 2025 days 1–2 solved; BoC's charged credits matched GitHub's figure within 0.1 %). ChatGPT/Codex passed the same day (AoC 2025 days 3–4; token totals matched OpenAI's dashboard exactly). Both are enabled. Anthropic is deferred until an API key is available.
+The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an AoC transport, a constrained solver agent loop with a two-part solve orchestrator and budget-aware subscription selection, a networkless Docker executor with a toolchain image, and offline tests. GitHub Copilot passed a supervised live calibration on 2026-09-27 (AoC 2025 days 1–2 solved; BoC's charged credits matched GitHub's figure within 0.1 %). ChatGPT/Codex passed the same day (AoC 2025 days 3–4; token totals matched OpenAI's dashboard exactly). Both are enabled. Anthropic was dropped (D020).
 
 Requires Node.js 24.21+ within the 24 LTS line and npm:
 
