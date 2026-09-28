@@ -236,6 +236,11 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
           await writeViews(paths, bound.state, ledger.status());
           break;
         }
+        if (outcome.part1 === "provider-unavailable" || outcome.part2 === "provider-unavailable") {
+          log("stopping: the provider refused requests; resolve the cause above, then run again");
+          await writeViews(paths, bound.state, ledger.status());
+          break;
+        }
       }
       await writeViews(paths, store.state, ledger.status());
       day = days ? days.shift() : day < 31 ? day + 1 : undefined;

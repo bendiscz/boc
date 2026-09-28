@@ -55,6 +55,11 @@ interface GuardedStreamsOptions {
   admission: Admission;
   /** Trusted adapter, not a model-supplied tool or arbitrary provider selection. */
   transport: ProviderStreams;
+  /**
+   * Raw text of a provider's terminal error, for private diagnostics only (the
+   * trusted orchestrator stores it beside the transcript; never the model or logs).
+   */
+  onProviderError?: (raw: string) => void;
   /** Notified once when an uncertain outcome permanently faults this guard. */
   onFault?: () => void;
   /**
@@ -73,6 +78,34 @@ type RequestOptions = SimpleStreamOptions;
 
 /** Error text of a response the guard stopped at its credit estimate. */
 export const CUTOFF_MESSAGE = "Response stopped: it exceeded its credit estimate.";
+
+/** Prefix of a provider usage-limit refusal, as exposed to callers. */
+export const USAGE_LIMIT_MESSAGE = "Provider usage limit reached.";
+/** Prefix of a provider credential rejection, as exposed to callers. */
+export const CREDENTIAL_MESSAGE = "Provider rejected the credential; run boc login.";
+/** Refusals where retrying now only burns attempts. */
+export const PROVIDER_REFUSALS = [USAGE_LIMIT_MESSAGE, CREDENTIAL_MESSAGE] as const;
+
+/**
+ * Safe description of a provider's terminal error. Raw provider text never leaves
+ * the guard (it may echo request content); only a category and, for usage limits,
+ * the provider's announced reset time in whole minutes.
+ */
+export function providerErrorMessage(raw: string | undefined): string {
+  const text = raw ?? "";
+  if (
+    /invalidated oauth token|invalid.?(api.?key|token|credential)|token (has )?expired|unauthori[sz]ed|\b401\b|authentication (failed|required)/i.test(
+      text,
+    )
+  ) {
+    return CREDENTIAL_MESSAGE;
+  }
+  if (/usage.?limit|rate.?limit|quota|insufficient|\b429\b|too many requests/i.test(text)) {
+    const minutes = /try again in ~?(\d{1,5}) ?min/i.exec(text)?.[1];
+    return `${USAGE_LIMIT_MESSAGE}${minutes ? ` Retry in about ${Number(minutes)} min.` : ""}`;
+  }
+  return "Provider returned an error; any unresolved reservation remains held.";
+}
 
 /**
  * Explicit option allowlist. Everything else is dropped, including callbacks and
@@ -132,7 +165,7 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
   ): AssistantMessageEventStream => {
     const signal = incomingOptions?.signal;
     const output = createAssistantMessageEventStream();
-    const failure = (aborted: boolean): AssistantMessage => ({
+    const failure = (aborted: boolean, detail?: string): AssistantMessage => ({
       role: "assistant",
       content: [],
       api: canonical.api,
@@ -149,7 +182,7 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
       stopReason: aborted ? "aborted" : "error",
       errorMessage: aborted
         ? "Request aborted; any unresolved reservation remains held."
-        : "Request blocked or failed; any unresolved reservation remains held.",
+        : (detail ?? "Request blocked or failed; any unresolved reservation remains held."),
       timestamp: Date.now(),
     });
 
@@ -231,7 +264,16 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
               settling = true;
               await reservation.settle(structuredClone(message));
               if (event.type === "error") {
-                output.push({ type: "error", reason: "error", error: failure(false) });
+                try {
+                  config.onProviderError?.(String(message.errorMessage ?? "").slice(0, 4000));
+                } catch {
+                  // Observers must not affect the boundary.
+                }
+                output.push({
+                  type: "error",
+                  reason: "error",
+                  error: failure(false, providerErrorMessage(message.errorMessage)),
+                });
               } else {
                 output.push(event);
               }

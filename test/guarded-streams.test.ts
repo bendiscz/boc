@@ -383,3 +383,22 @@ test("aborted or deferred terminal outcomes are uncertain: never settled, bounda
     assert.equal(calls, 1);
   }
 });
+
+test("provider errors are reduced to a safe category", async () => {
+  const { providerErrorMessage, USAGE_LIMIT_MESSAGE } = await import(
+    "../src/pi/guarded-streams.ts"
+  );
+  assert.equal(
+    providerErrorMessage("429 Too Many Requests: prompt text here"),
+    USAGE_LIMIT_MESSAGE,
+  );
+  assert.equal(
+    providerErrorMessage("You have hit your ChatGPT usage limit. Try again in ~7 min."),
+    `${USAGE_LIMIT_MESSAGE} Retry in about 7 min.`,
+  );
+  assert.doesNotMatch(providerErrorMessage("500 upstream said: my prompt"), /prompt|500/);
+  assert.equal(
+    providerErrorMessage("Encountered invalidated oauth token for user, failing request"),
+    "Provider rejected the credential; run boc login.",
+  );
+});

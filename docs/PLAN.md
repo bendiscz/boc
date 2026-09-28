@@ -22,11 +22,15 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **to be decided with the operator.** The AoC 2024 days 13–25 evaluation is done: 25 of 25 solvable parts were correct on the first attempt, with no output-cap hits (EVALUATION.md). Candidates:
+Next concrete task: **finish the luna vs sol benchmark** (EVALUATION.md, "Model benchmark"). Luna is done. The sol baseline stopped at 2025 day 10 part 2 because the Codex OAuth token was invalidated server-side.
 
-- the model-choice replay benchmark (open question below);
-- milestone 7 readiness (rechecks, live drills);
-- the remaining open items.
+1. The operator re-authorizes Codex: `node dist/main.js login var/calibration-codex.config.json codex --browser`. The bench configs share `.secrets/codex.json`.
+2. With the operator's go-ahead, run the sol replays:
+   - `replay var/bench-sol-2025b.config.json --source var/calibration.config.json --source var/calibration-codex.config.json --days 10,11,12` (fresh storage; `var/bench/sol-2025` holds the valid days 1–10 part 1);
+   - `replay var/bench-sol-2024.config.json --source var/eval-2024-copilot.config.json --source var/eval-2024-codex.config.json --days 13,…,25`.
+   Private logs go in `var/bench/`.
+3. Compare per part and write the result in EVALUATION.md.
+4. Then fix the wasted-attempt defect: `propose_answer` should reject, back to the model and within the same attempt, an answer that was already rejected or that contradicts a known bound. Add a regression test.
 
 Open question: **solver model choice and parallel solving** (raised by the operator on 2026-09-28; undecided, nothing changed).
 
@@ -324,3 +328,9 @@ Output cap tuning (offline, 2026-09-28):
 AoC 2024 days 13–25 evaluation (live, 2026-09-28, agent-run with the operator's go-ahead):
 
 - New private configs for event 2024 (300/100) and storage `var/eval-2024-*`. Result: 25 of 25 solvable parts correct on the first attempt, day 25 part 2 `needs-stars`, 20.43 Copilot and 10.91 Codex credits, and no output-cap hits. Aggregates are in EVALUATION.md; private notes are in `var/eval-2024/`. No code changes.
+
+Replay benchmark and provider-refusal handling (2026-09-28):
+
+- Added `boc replay` (`src/bench/replay.ts`). Tests cover: judging against accepted answers without contacting AoC; a virtual embargo; the solver never seeing the answer it is judged against; refusal of shared storage and of missing sources; and a tampered page that would leak an answer, refused before any model call.
+- Live, with the operator's go-ahead: luna on 2025 days 1–12 and 2024 days 13–25, and sol on 2025 until the Codex token was invalidated. Results are in EVALUATION.md.
+- Provider refusals (usage limit, rejected credential) now stop the part as `provider-unavailable` after one attempt, and the run stops. The raw error goes only into a private `provider-error.txt`. `npm run check`: 148 offline tests passed.

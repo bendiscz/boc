@@ -361,3 +361,25 @@ test("responses truncated at the output cap are reported, and the retry proceeds
   assert.ok(!f.events.some((e) => /attempt 2: .*output cap/.test(e)));
   assert.equal(f.store.state.puzzles["day-01"]?.parts[1].attempts, 2);
 });
+
+test("a provider usage limit stops the part after one attempt, keeping the rest", async (t) => {
+  const limit = message({
+    content: [],
+    stopReason: "error",
+    errorMessage:
+      'You have hit your ChatGPT usage limit (business plan). Try again in ~42 min. {"prompt":"secret"}',
+  });
+  const f = await fixture(t, { aoc: [page(1, [], 1)], model: [() => limit, () => limit] });
+  assert.deepEqual(await f.solve(), { part1: "provider-unavailable", part2: undefined });
+  const part = f.store.state.puzzles["day-01"]?.parts[1];
+  assert.equal(part?.attempts, 1);
+  assert.equal(part?.status, "ready", "resumable after the limit resets");
+  const stop = f.events.find((e) => /stopped: Provider usage limit reached/.test(e)) ?? "";
+  assert.match(stop, /Retry in about 42 min\./);
+  assert.doesNotMatch(f.events.join("\n"), /secret|business plan/, "no raw provider text");
+  const diagnostics = await readFile(
+    join(f.paths.attempt(puzzleId(1), 1, 1), "provider-error.txt"),
+    "utf8",
+  );
+  assert.match(diagnostics, /business plan/, "raw text kept only in private diagnostics");
+});

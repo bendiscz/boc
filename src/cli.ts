@@ -1,5 +1,6 @@
 import { AocError } from "./aoc/client.ts";
 import { AppError, type Progress, runEvent } from "./app.ts";
+import { ReplayError, renderReplayReport, replayEvent } from "./bench/replay.ts";
 import { formatCredits, parseCredits } from "./budget/credits.ts";
 import { CreditLedger, LedgerError } from "./budget/ledger.ts";
 import { type BocConfig, ConfigError, loadConfig } from "./config.ts";
@@ -33,6 +34,10 @@ Usage:
                                    Solve puzzles (past days or waiting for releases);
                                    refuses to start without an eligible provider adapter;
                                    --calibrate (requires --days) uses uncalibrated adapters
+  boc replay <config> --source <config> [--source <config>] --days 1,2
+                                   Benchmark the config's model on days already solved in the
+                                   sources: judged against their accepted answers, never
+                                   contacting AoC; model calls are real and ledger-admitted
   boc status <config>              Show run state and credits (read-only, lock-free)
   boc views <config>               Regenerate private Markdown summaries from journals
   boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>
@@ -172,6 +177,37 @@ async function run(
   }
 }
 
+async function replay(config: BocConfig, flags: string[], output: Output, runtime: Runtime) {
+  let days: number[] | undefined;
+  const sourcePaths: string[] = [];
+  for (let i = 0; i < flags.length; i++) {
+    const flag = flags[i];
+    const value = flags[i + 1];
+    if (flag === "--source" && value && !value.startsWith("--")) {
+      sourcePaths.push(value);
+      i++;
+    } else if (flag === "--days" && !days && /^[0-9]{1,2}(,[0-9]{1,2}){0,30}$/.test(value ?? "")) {
+      days = (value ?? "").split(",").map(Number);
+      i++;
+      if (days.some((day) => day < 1 || day > 31)) throw new UsageError();
+    } else {
+      throw new UsageError();
+    }
+  }
+  if (!days || sourcePaths.length === 0) throw new UsageError();
+  const sources: BocConfig[] = [];
+  for (const path of sourcePaths) sources.push(await loadConfig(path));
+  const report = await replayEvent({
+    config,
+    version: VERSION,
+    sources,
+    days,
+    ...(runtime.signal ? { signal: runtime.signal } : {}),
+    onEvent: (message) => output.out(`${new Date().toISOString()} ${message}`),
+  });
+  for (const line of renderReplayReport(report)) output.out(line);
+}
+
 async function submissionCommand(args: string[], config: BocConfig, output: Output) {
   const [command, day, part, submission, note] = args;
   if (
@@ -265,7 +301,7 @@ export async function runCli(
   }
   const [command, ...rest] = args;
   const configIndex = command === "ledger" || command === "submission" ? 1 : 0;
-  const isRun = command === "run";
+  const isRun = command === "run" || command === "replay";
   const configPath = rest[configIndex];
   const known = [
     "check-config",
@@ -276,6 +312,7 @@ export async function runCli(
     "submission",
     "login",
     "calibration-report",
+    "replay",
   ];
   if (!command || !known.includes(command) || !configPath) {
     output.err("Invalid command. Run boc --help.");
@@ -297,6 +334,7 @@ export async function runCli(
     if (command === "check-config") await checkConfig(config, output);
     else if (command === "status") await status(config, output);
     else if (command === "views") await views(config, output);
+    else if (command === "replay") await replay(config, rest.slice(1), output, runtime);
     else if (isRun) await run(config, rest.slice(1), output, runtime);
     else if (command === "login")
       await login(config, rest[1] ?? "", rest.slice(2), output, runtime);
@@ -322,6 +360,7 @@ export async function runCli(
       error instanceof AppError ||
       error instanceof AocError ||
       error instanceof AdapterError ||
+      error instanceof ReplayError ||
       error instanceof PrivateFileError;
     output.err(safe ? error.message : "Command failed.");
     return 1;

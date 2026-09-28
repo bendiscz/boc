@@ -4,7 +4,12 @@ import type { Api, Model, ProviderStreams } from "@earendil-works/pi-ai";
 import { puzzleText } from "../aoc/parse.ts";
 import type { AocService } from "../aoc/service.ts";
 import { LedgerError } from "../budget/ledger.ts";
-import { type Admission, CUTOFF_MESSAGE, createGuardedStreams } from "../pi/guarded-streams.ts";
+import {
+  type Admission,
+  CUTOFF_MESSAGE,
+  createGuardedStreams,
+  PROVIDER_REFUSALS,
+} from "../pi/guarded-streams.ts";
 import type { Executor } from "../sandbox/executor.ts";
 import { Workspace } from "../sandbox/workspace.ts";
 import type { PartNumber, PuzzleId } from "../state/ids.ts";
@@ -58,6 +63,8 @@ export type PartOutcome =
   /** Part 2 offers no answer form (the final day before every other star is earned). */
   | "needs-stars"
   | "provider-fault"
+  /** The provider refused requests (usage limit, rejected credential); attempts are kept. */
+  | "provider-unavailable"
   | "no-subscription";
 
 export async function solvePuzzle(options: SolveOptions) {
@@ -221,6 +228,7 @@ async function runAttempt(
 
   let denied = false;
   let faulted = false;
+  const providerErrors: string[] = [];
   const admission: Admission = {
     reserve: async (request) => {
       try {
@@ -238,6 +246,9 @@ async function runAttempt(
     ...(binding.outputCap ? { outputCap: binding.outputCap } : {}),
     onFault: () => {
       faulted = true;
+    },
+    onProviderError: (raw) => {
+      providerErrors.push(raw);
     },
   });
   const tools = createSolverTools({
@@ -283,6 +294,13 @@ async function runAttempt(
       join(attemptDir, "transcript.json"),
       `${JSON.stringify(agent.state.messages, null, 1)}\n`,
     ).catch(() => log("transcript could not be written"));
+    if (providerErrors.length > 0) {
+      // Private diagnostics; the log and the model only see a safe category.
+      await writeFileAtomic(
+        join(attemptDir, "provider-error.txt"),
+        `${providerErrors.join("\n---\n")}\n`,
+      ).catch(() => {});
+    }
   }
 
   // Evidence for tuning the output cap (EVALUATION.md): a cap that is too low
@@ -314,6 +332,16 @@ async function runAttempt(
     return "gave-up";
   }
   await store.record({ ...where, outcome: "failed" });
+  const limited = agent.state.messages.findLast(
+    (m) =>
+      m.role === "assistant" &&
+      PROVIDER_REFUSALS.some((prefix) => m.errorMessage?.startsWith(prefix)),
+  );
+  if (limited && limited.role === "assistant") {
+    // Retrying now would only burn attempts; stop and keep the rest for later.
+    log(`attempt ${attempt} stopped: ${limited.errorMessage}`);
+    return "provider-unavailable";
+  }
   if (faulted) {
     log(`attempt ${attempt} stopped: provider outcome uncertain (reservation held)`);
     return "provider-fault";
