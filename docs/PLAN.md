@@ -1,23 +1,51 @@
 # Development plan and session handoff
 
-## Current state (2026-09-28)
+## Current state (2026-09-28, end of session)
 
-- **Working end to end.** `boc run` waits for releases (or takes `--days`), fetches and caches the puzzle and input, and solves with a ledger-admitted, constrained agent loop (`pi-agent-core`, D015). Generated code runs in networkless Docker containers (`sandbox/Dockerfile`, image `boc-solver:dev` built locally). The run then submits with write-ahead records and continues to part 2. Other features: `--tui`, `status`, `views`, `events.log`, and the ledger and submission operator commands.
+- **Working end to end.** `boc run` waits for releases (or takes `--days`), fetches and caches the puzzle and input, and solves with a ledger-admitted, constrained agent loop (`pi-agent-core`, D015). Generated code runs in networkless Docker containers. The run then submits with write-ahead records and continues to part 2. Commands:
+  - `run`, `status`, `views`, `--tui`, `events.log`;
+  - the ledger and submission operator commands (`break-lock` clears both locks);
+  - `login`, `calibration-report`;
+  - `replay`, the model benchmark against accepted answers, which never contacts AoC;
+  - `alert-test`.
+- **Reliability features added on 2026-09-28:**
+  - final-day part 2 button;
+  - runaway-response limits (120 s per response, 60 s stall, 10 min per attempt; the partial output is kept privately);
+  - refusal of known-wrong proposals back to the model;
+  - failover between subscriptions on provider refusals (D021);
+  - readiness checks at start and T−30 before each release, with a recheck at T−5 (D022);
+  - ntfy and healthchecks.io alerts (D023).
 - **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance.
-- **Providers:**
-  - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md has both results).
-  - Solving model: `gpt-6-sol`, with no parallel solving. Anthropic is dropped (D020).
-- **AoC account.** All of AoC 2025 (12 days, 24 stars) is solved on the dedicated account. So are AoC 2024 days 13–25 (25 stars; day 25 part 2 needs days 1–12), via `var/eval-2024-copilot.config.json` (days 13–19) and `var/eval-2024-codex.config.json` (days 20–25). Days 1–2 and 5–8 were solved via Copilot, days 3–4 and 9–12 via Codex. The days 5–12 rehearsal results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
-- **Private local setup** (ignored by Git):
-  - credentials in `.secrets/`: the AoC cookie, `copilot.json`, `codex.json`, `ntfy-topic-url`, and `healthchecks-ping-url` (the operator's `boc alert-test` passed on 2026-09-28);
-  - **the event config `var/event-2026.config.json`**: event 2026, storage `var/event-2026`, sol via Copilot first and then Codex (D021 failover), separate pools of 300 per event and 100 per puzzle each, alerts on, and the current image. It shares the credential files with the calibration configs, so never run them concurrently (D022). Before the event: recheck rates and models (milestone 7), and set the healthchecks cron day range once the calendar is published;
-  - `var/calibration.config.json` (Copilot, `gpt-6-sol`) and `var/calibration-codex.config.json` (Codex, `gpt-6-sol`), each for event 2025 with its own storage directory, both with `assumedMaxOutputTokens: 8000` (lowered from 16000 on 2026-09-28).
-- **Allowance** (the operator confirmed on 2026-09-28 to keep it): each config allows 300 credits per event and 100 per puzzle in its native unit.
-  - Copilot has spent 15.07 of 300 AI credits.
-  - Codex has spent 6.63 of 300 Codex credits.
-  - No provider-side caps are configured.
-- **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`.
-- **Checks.** `npm run check`: 152 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Providers and model:**
+  - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md).
+  - The solving model is `gpt-6-sol`, which beat `gpt-6-luna` in the replay benchmark (EVALUATION.md).
+  - No parallel solving; Anthropic is dropped (D020).
+- **Sandbox.** The image `boc-solver:dev` is `sha256:24d759de348293c5f35f6f98f9c2459880e703fd2fd67497a6e1ffb8527afed0` (arm64), with `uv` hash-pinned via `sandbox/uv-requirements.txt`.
+  - `npm run test:executor -- <id> --toolchains` passes on Docker Desktop.
+  - `npm run test:linux -- <id>` passes on a native Linux daemon (dind) under umask 022 and 077.
+  - An amd64 run and a bare-metal Linux run are still open.
+- **AoC account.** All of AoC 2025 (24 stars) and AoC 2024 days 13–25 (25 stars; day 25 part 2 needs days 1–12) are solved on the dedicated account. Results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md: no delays within a solve burst, no needless requests, and the bug brake of 10 requests per 10 minutes.
+- **Private local setup** (ignored by Git; never read or print `.secrets/`):
+  - **Secrets:** `.secrets/` holds the AoC cookie, `copilot.json`, `codex.json`, `ntfy-topic-url`, and `healthchecks-ping-url`. The operator's `boc alert-test` passed on 2026-09-28, using `examples/boc.config.json`, whose paths resolve to `.secrets/`.
+  - **Event config:** `var/event-2026.config.json` is for event 2026, with storage `var/event-2026`.
+    - Subscriptions: sol via Copilot first, then Codex (failover, D021), on separate pools of 300 per event and 100 per puzzle each.
+    - Alerts are on, and it uses the image above. Smoke-tested via a 2025 copy (`var/smoke-2025.config.json`): both start checks passed, and Copilot solved day 1.
+    - It shares the credential files with the other configs, so never run two BoC processes concurrently (D022).
+  - **Other configs, each with its own storage under `var/`:**
+
+    | Config | Purpose | Spent (native credits) |
+    | --- | --- | --- |
+    | `calibration` | Copilot, 2025 | 15.07 |
+    | `calibration-codex` | Codex, 2025 | 6.63 |
+    | `eval-2024-copilot` | 2024 days 13–19 | 20.43 |
+    | `eval-2024-codex` | 2024 days 20–25 | 10.91 |
+    | `bench-luna-2025`, `bench-luna-2024`, `bench-luna-2024b` | luna replays | 1.14, 3.41, 0.51 |
+    | `bench-sol-2025`, `bench-sol-2025b`, `bench-sol-2024` | sol replays | 7.96, 5.00, 22.88; `bench-sol-2024` also holds 3.39 by the operator's decision |
+    | `smoke-2025` | combined-config smoke test | 2.04 |
+
+  - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
+- **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
+- **Checks.** `npm run check`: 166 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
@@ -36,9 +64,7 @@ Other open items:
 
 - an amd64 run of `npm run test:linux` (arm64 passed), and a bare-metal Linux host run before the event.
 
-Live calls are allowed only through calibrated adapters (Copilot, Codex) or supervised `--calibrate` runs the operator starts; the orchestrator never makes live provider or AoC calls during development sessions on its own. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
-
-The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
+Live runs (provider calls, AoC requests, submissions) spend real credits: start them only with the operator's explicit go-ahead in that session, and under supervision. Replay benchmarks never contact AoC, but they still spend model credits. Preserve unknown-charge reservations, and never replace native credits with estimates that can overshoot (D016).
 
 ## Milestones
 
@@ -82,11 +108,11 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 
 ### 6. Authorized historical evaluation
 
-- [ ] Ask for credential-file paths and perform the minimum required interactive authorization; never ask for pasted secrets.
+- [x] Ask for credential-file paths and perform the minimum required interactive authorization; never ask for pasted secrets. (`boc login` for Copilot and Codex; the operator re-authorized Codex on 2026-09-28.)
 - [x] Validate actual subscription entitlements and credit reconciliation under a small explicit allocation. (Copilot and Codex, 2026-09-27; Anthropic deferred.)
 - [x] Validate the dedicated AoC account/session and site conduct before submissions. (2025 days 1–2 fetched and submitted in the calibration run.)
 - [x] Evaluate representative older puzzles privately; record correctness, credit usage, latency, and failure modes without consulting solutions. (AoC 2025 complete, EVALUATION.md; harder older days still worth evaluating.)
-- [ ] Turn discovered defects into synthetic regression tests and refine scheduling/solver strategy.
+- [x] Turn discovered defects into synthetic regression tests and refine scheduling/solver strategy. (2026-09-28: runaway limits, refusal handling and failover, known-wrong proposals, umask modes, brake logging; see EVALUATION.md, "Defects found".)
 
 ### 7. AoC 2026 readiness
 

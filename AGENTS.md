@@ -30,9 +30,9 @@ Read `README.md`, `docs/REQUIREMENTS.md`, and `docs/PLAN.md` before continuing w
 
 ## Current stage
 
-BoC works end to end. The two production adapters, GitHub Copilot and ChatGPT/Codex, passed supervised live calibration on 2026-09-27 (AoC 2025 days 1–4 solved). The solving model is `gpt-6-sol`, and Anthropic is dropped (D020). The architecture is recorded in `docs/DECISIONS.md` (D001–D020). The current state and the next task are in `docs/PLAN.md` under "Next session: start here".
+BoC works end to end and is prepared for AoC 2026. The two production adapters, GitHub Copilot and ChatGPT/Codex, are calibrated. `gpt-6-sol` solved all of AoC 2025 and AoC 2024 days 13–25 on the first submission. BoC has failover (D021), readiness checks (D022), and alerts (D023), and a private event config exists. The architecture is recorded in `docs/DECISIONS.md` (D001–D023). The current state and the next task are in `docs/PLAN.md` under "Next session: start here".
 
-Run `npm ci --ignore-scripts` and `npm run check`. Read `docs/OPERATOR.md`, `docs/CONFIGURATION.md`, `docs/FEASIBILITY.md`, `docs/AOC.md`, and `docs/SANDBOX.md` alongside the plan before continuing.
+Run `npm ci --ignore-scripts` and `npm run check`. Read `docs/OPERATOR.md`, `docs/CONFIGURATION.md`, `docs/FEASIBILITY.md`, `docs/AOC.md`, `docs/SANDBOX.md`, and `docs/EVALUATION.md` alongside the plan before continuing.
 
 This development host sits behind a TLS-intercepting corporate proxy:
 
@@ -41,7 +41,7 @@ This development host sits behind a TLS-intercepting corporate proxy:
 
 Private runtime files exist only locally and are ignored by Git:
 
-- `.secrets/aoc-session`, `.secrets/copilot.json`, and `.secrets/codex.json`. Never read, print, or copy their contents.
-- The calibration configs `var/calibration.config.json` (Copilot) and `var/calibration-codex.config.json` (Codex), with their storage under `var/calibration*/`.
+- `.secrets/aoc-session`, `.secrets/copilot.json`, `.secrets/codex.json`, `.secrets/ntfy-topic-url`, and `.secrets/healthchecks-ping-url`. Never read, print, or copy their contents.
+- The event config `var/event-2026.config.json`, plus the calibration, evaluation, benchmark, and smoke-test configs listed in `docs/PLAN.md`, each with its own storage under `var/`. Never run two BoC processes concurrently; they share credential files (D022).
 
 Live runs spend real credits and submit real answers. Start them only with the operator's explicit go-ahead, within the operator's current allowance (see the plan), and never without supervision.
