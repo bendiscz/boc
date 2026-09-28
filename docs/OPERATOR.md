@@ -60,7 +60,11 @@ node dist/main.js run boc.config.json --tui           # live dashboard
 - BoC sleeps until each release (midnight EST) and never polls. Right after release it fetches the page and input, then submits answers without artificial delays. It honours every server-reported wait.
 - **Ctrl-C** stops after the current step, with exit code 130. Running again resumes from the recorded state. A second Ctrl-C forces exit; the journals stay consistent regardless.
 - A part also ends on exhausted credits, the attempt limit, or a submission whose outcome is uncertain. The run then continues with the next day, and a later run resolves the uncertain submission by reading the puzzle page.
-- A provider fault (a charge that cannot be settled) stops the whole run until you reconcile it.
+- **Failover.** Subscriptions are tried in configuration order, for example `gpt-6-sol` via Copilot first, then via Codex.
+  - When a provider refuses requests, BoC fails over to the next subscription, and the refused attempt does not count toward the attempt limit. The log line reads `subscription … unavailable …; failing over to …`.
+  - A usage-limited subscription is skipped until the provider's announced reset, or for 60 minutes if none is given. A rejected credential is skipped for the rest of that day; run `boc login` to restore it.
+  - If every subscription refuses, the run stops.
+- A provider fault (a charge that cannot be settled) stops the whole run until you reconcile it. It never fails over, because the charge is unknown.
 
 ## Monitoring
 
@@ -80,6 +84,7 @@ Stop BoC before any command that changes state. They all take the same locks.
 | Unacknowledged overrun (admission blocked) | Investigate, then `ledger acknowledge boc.config.json <id> <note>`. The spent amount stays recorded. |
 | Uncertain submission | The next run reads the puzzle page to resolve it. If AoC provably never judged it (for example, an auth rejection), use `submission not-judged boc.config.json <day> <part> <n> <note>`. A new attempt may then propose the answer again; nothing is resubmitted automatically. |
 | Expired AoC session | Replace the cookie file content, then run again. |
+| "Provider rejected the credential; run boc login" | `node dist/main.js login boc.config.json <subscription>` (add `--browser` for Codex if device codes are disallowed). A running BoC picks up the renewed file on its next request to that subscription. |
 | Corrupt journal | BoC refuses to open it. Keep a copy, and do not delete or edit it without understanding the damage: the journals are the record of credits spent and answers submitted. |
 
 ## Calibration run (GitHub Copilot)

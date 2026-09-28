@@ -74,6 +74,8 @@ export interface PartState {
   readonly status: PartStatus;
   readonly statementSha256: string | undefined;
   readonly attempts: number;
+  /** Attempts a provider refused before the model ran; not counted against the attempt cap. */
+  readonly refusedAttempts: number;
   readonly activeAttempt: number | undefined;
   readonly proposed: { readonly attempt: number; readonly answer: string } | undefined;
   readonly submissions: readonly SubmissionState[];
@@ -132,7 +134,7 @@ const recordSchema = z.discriminatedUnion("type", [
     type: z.literal("attempt-finished"),
     ...where,
     attempt: sequence,
-    outcome: z.enum(["answer", "failed", "interrupted", "budget-exhausted"]),
+    outcome: z.enum(["answer", "failed", "interrupted", "budget-exhausted", "refused"]),
     answer: answer.optional(),
   }),
   z.strictObject({
@@ -194,6 +196,7 @@ const EMPTY_PART: PartState = {
   status: "locked",
   statementSha256: undefined,
   attempts: 0,
+  refusedAttempts: 0,
   activeAttempt: undefined,
   proposed: undefined,
   submissions: [],
@@ -304,6 +307,9 @@ export function transition(state: RunState, record: RunRecord): RunState {
       if (record.outcome === "answer" && record.answer !== undefined) {
         next.status = "proposed";
         next.proposed = { attempt: record.attempt, answer: record.answer };
+      } else if (record.outcome === "refused") {
+        next.status = "ready";
+        next.refusedAttempts = before.refusedAttempts + 1;
       } else if (record.outcome === "budget-exhausted") {
         next.status = "gave-up";
         next.gaveUpReason = "budget-exhausted";

@@ -21,6 +21,9 @@ import { writeViews } from "./state/summary.ts";
 import { PrivateFileError } from "./util/private-file.ts";
 import { abortableSleep } from "./util/sleep.ts";
 
+/** How long a usage-limited subscription is skipped when the provider gives no reset time. */
+const DEFAULT_REFUSAL_MS = 60 * 60_000;
+
 const BRAKE_NOTE = `at most ${DEFAULT_RATE_CAP.max} requests per ${DEFAULT_RATE_CAP.windowMs / 60_000} minutes`;
 
 /**
@@ -168,9 +171,17 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
       options.executor ?? createDockerExecutor({ image: config.sandbox?.image ?? "" });
     const results: DayResult[] = [];
 
+    /**
+     * Subscriptions a provider refused, until when (epoch ms). A usage limit lasts
+     * until the announced reset (default 60 min); a rejected credential lasts until
+     * the next day, when a fresh chance is given (e.g. after `boc login`).
+     */
+    const unavailable = new Map<string, number>();
     let day: number | undefined = days ? days.shift() : 1;
     while (day !== undefined) {
       options.signal?.throwIfAborted();
+      for (const [id, until] of unavailable)
+        if (until === Number.POSITIVE_INFINITY) unavailable.delete(id);
       const puzzle = puzzleId(day);
       setCurrent(puzzle);
       if (!isReleased(year, day, now())) {
@@ -200,7 +211,7 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
               config,
               ledger: ledger.status([puzzle]),
               puzzle,
-              eligible: (id) => adapters.has(id),
+              eligible: (id) => adapters.has(id) && !((unavailable.get(id) ?? 0) > now().getTime()),
               minimum: (id) => adapters.get(id)?.minimumAttemptCredits,
             });
             const adapter = chosen === undefined ? undefined : adapters.get(chosen);
@@ -224,6 +235,20 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
           sleep,
           ...(options.signal ? { signal: options.signal } : {}),
           onEvent: log,
+          onRefusal: (refusal) => {
+            const until =
+              refusal.kind === "credential"
+                ? Number.POSITIVE_INFINITY
+                : now().getTime() + (refusal.retryAfterMs ?? DEFAULT_REFUSAL_MS);
+            unavailable.set(refusal.subscription, until);
+            const others = [...adapters.keys()].filter(
+              (id) =>
+                id !== refusal.subscription && !((unavailable.get(id) ?? 0) > now().getTime()),
+            );
+            log(
+              `subscription ${refusal.subscription} unavailable (${refusal.kind === "credential" ? "credential rejected; run boc login" : "usage limit"})${others.length > 0 ? `; failing over to ${others.join(", ")}` : "; no other subscription is available"}`,
+            );
+          },
           ...(options.maxAttemptsPerPart ? { maxAttemptsPerPart: options.maxAttemptsPerPart } : {}),
           ...(options.maxTurnsPerAttempt ? { maxTurnsPerAttempt: options.maxTurnsPerAttempt } : {}),
         });
@@ -237,7 +262,9 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
           break;
         }
         if (outcome.part1 === "provider-unavailable" || outcome.part2 === "provider-unavailable") {
-          log("stopping: the provider refused requests; resolve the cause above, then run again");
+          log(
+            "stopping: every subscription refused requests; resolve the causes above, then run again",
+          );
           await writeViews(paths, bound.state, ledger.status());
           break;
         }

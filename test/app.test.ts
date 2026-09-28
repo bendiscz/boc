@@ -231,3 +231,127 @@ test("subscriptions without an estimate are not used; missing provider caps are 
   await f.run({ days: [1], onEvent: (e) => warned.push(e) });
   assert.ok(warned.some((e) => /pool pool has no provider-side spending cap/.test(e)));
 });
+
+test("a refusing subscription fails over to the next one; the refusal is not an attempt", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "boc-failover-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const estimate = {
+    pricing: "synthetic",
+    rates: { input: "1", output: "1", cacheRead: "1", cacheWrite: "1" },
+  };
+  const limits = { event: "100", perPuzzle: "20" };
+  const config = parseConfig({
+    version: 1,
+    event: { year: 2025 },
+    storageDir: join(root, "var"),
+    aoc: { sessionCookieFile: join(root, "cookie"), contact: "ops@example.invalid" },
+    sandbox: { image: `sha256:${"a".repeat(64)}` },
+    creditPools: [
+      { id: "pool-a", provider: "github-copilot", unit: "a", limits },
+      { id: "pool-b", provider: "openai-codex", unit: "b", limits },
+    ],
+    subscriptions: [
+      {
+        id: "first",
+        provider: "github-copilot",
+        credentialFile: join(root, "a"),
+        model: FAKE_MODEL.id,
+        creditPool: "pool-a",
+        limits,
+        estimate,
+      },
+      {
+        id: "second",
+        provider: "openai-codex",
+        credentialFile: join(root, "b"),
+        model: FAKE_MODEL.id,
+        creditPool: "pool-b",
+        limits,
+        estimate,
+      },
+    ],
+  });
+  const solved = new Map<number, number>();
+  const client: AocClient = {
+    prepare: async () => {},
+    fetchPuzzle: async (_y, day) => ((solved.get(day) ?? 0) >= 1 ? page(2, ["1"]) : page(1, [])),
+    fetchInput: async () => "1\n",
+    submitAnswer: async (_y, day) => {
+      solved.set(day, (solved.get(day) ?? 0) + 1);
+      return correct;
+    },
+  };
+  const calls = { first: 0, second: 0 };
+  const adapter = (name: "first" | "second"): ProviderAdapter => {
+    const invoke = (_m: unknown, context: TranscriptContext) => {
+      calls[name]++;
+      if (name === "first") {
+        return responseStream(
+          message({
+            content: [],
+            stopReason: "error",
+            errorMessage: "Encountered invalidated oauth token for user, failing request",
+          }),
+        );
+      }
+      const text = JSON.stringify(context.messages.find((m) => m.role === "user")?.content);
+      const answer = /part 2\./.test(text) ? "2" : "1";
+      return responseStream(
+        message({
+          content: [{ type: "toolCall", id: "p", name: "propose_answer", arguments: { answer } }],
+          stopReason: "toolUse",
+        }),
+      );
+    };
+    return {
+      model: FAKE_MODEL,
+      transport: { stream: invoke, streamSimple: invoke },
+      meter: {
+        maxCharge: () => parseCredits("1"),
+        actualCharge: async () => ({ credits: parseCredits("1"), receipt: "receipt:fake" }),
+      },
+      minimumAttemptCredits: parseCredits("1"),
+    };
+  };
+  const events: string[] = [];
+  const results = await runEvent({
+    config,
+    version: "test",
+    days: [1, 2],
+    adapters: {
+      "github-copilot": async () => adapter("first"),
+      "openai-codex": async () => adapter("second"),
+    },
+    aocClient: client,
+    executor: {
+      run: async () => ({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "",
+        stderr: "",
+        truncated: false,
+        durationMs: 0,
+      }),
+    },
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+    maxAttemptsPerPart: 1,
+    onEvent: (e) => events.push(e),
+  });
+  assert.deepEqual(
+    results.map((r) => [r.part1, r.part2]),
+    [
+      ["solved", "solved"],
+      ["solved", "solved"],
+    ],
+    "an attempt cap of 1 still leaves room: refusals are not attempts",
+  );
+  // Day 1: refused once, then the credential stays unavailable for that day.
+  // Day 2: a fresh chance (e.g. after boc login), refused once more.
+  assert.equal(calls.first, 2);
+  assert.equal(calls.second, 4);
+  assert.equal(events.filter((e) => /failing over to second/.test(e)).length, 2);
+  assert.ok(
+    events.every((e) => !/invalidated oauth token/.test(e)),
+    "no raw provider text",
+  );
+});

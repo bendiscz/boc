@@ -286,6 +286,7 @@ test("puzzle text cannot close the prompt's delimiters", async () => {
       status: "ready",
       statementSha256: undefined,
       attempts: 0,
+      refusedAttempts: 0,
       activeAttempt: undefined,
       proposed: undefined,
       submissions: [],
@@ -383,8 +384,9 @@ test("a provider usage limit stops the part after one attempt, keeping the rest"
   assert.deepEqual(await f.solve(), { part1: "provider-unavailable", part2: undefined });
   const part = f.store.state.puzzles["day-01"]?.parts[1];
   assert.equal(part?.attempts, 1);
+  assert.equal(part?.refusedAttempts, 1, "a refusal is not counted as a model attempt");
   assert.equal(part?.status, "ready", "resumable after the limit resets");
-  const stop = f.events.find((e) => /stopped: Provider usage limit reached/.test(e)) ?? "";
+  const stop = f.events.find((e) => /refused by sub: Provider usage limit reached/.test(e)) ?? "";
   assert.match(stop, /Retry in about 42 min\./);
   assert.doesNotMatch(f.events.join("\n"), /secret|business plan/, "no raw provider text");
   const diagnostics = await readFile(

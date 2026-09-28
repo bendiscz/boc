@@ -22,10 +22,17 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **to be decided with the operator.** The luna vs sol benchmark is done (keep sol), and its defects are fixed. Candidates:
+Next concrete task: **credential checks at start and 30 minutes before each release** (operator decision, 2026-09-28). An unattended multi-day run on a Raspberry Pi needs the pre-release check as well as the one at start.
 
-- milestone 7 readiness (rechecks, live drills);
-- the remaining open items.
+- **At start and at release − 30 min:** refresh and validate every subscription's credential without a model call (the OAuth refresh only). Check the AoC session cookie with one light authenticated page read per day.
+- **A failed check:** log it prominently, and mark that subscription unavailable, so selection fails over (D021) before release instead of at release.
+- **Offline tests** with a fake clock and fake OAuth.
+
+Then:
+
+- operator alerts when a run stops or needs attention;
+- an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
+- live failure drills via replay (milestone 7).
 
 Operator decision (2026-09-28): the 3.39-credit reservation held in `var/bench/sol-2024` stays held. The Codex dashboard is too aggregated to read one call's charge, and the reservation counts only against that bench config. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
@@ -329,3 +336,7 @@ Operator decisions and hash-pinned uv (2026-09-28):
 - D020: keep `gpt-6-sol`, no parallel solving, Anthropic dropped. The plan, AGENTS, README, REQUIREMENTS, OPERATOR, and FEASIBILITY status lines are updated.
 - `uv` is now installed from `sandbox/uv-requirements.txt` with `--require-hashes`, and the `UV_VERSION` build argument is removed. The image was rebuilt (arm64, about 19 min through the proxy; an earlier attempt failed once with a transient `cannot allocate memory` in Docker Desktop). Checks: the downloaded wheel hash matched the pin; an altered hash was refused (offline negative control); no build CA certificate is in the image; the executor probe with toolchains passed. All private configs point to the new image ID.
 - Linux executor probe (`npm run test:linux`, `sandbox/linux-probe.sh`): a native Linux daemon in a digest-pinned `docker:dind` container, reachable only on an internal network, with the probe running as UID 1000 on ext4. It found a real defect: under umask 077 the workspace files were `0600`, unreadable by the container's UID. Fixed with explicit `fchmod`/`chmod`, and a regression test was added. Both umasks pass on arm64. `npm run check`: 153 offline tests passed.
+
+Failover between subscriptions (D021, 2026-09-28):
+
+- A provider refusal (usage limit or rejected credential) records the attempt as `refused`, which does not count toward the attempt cap. The part fails over to the next subscription in configuration order. The run loop skips a usage-limited subscription until its reset and a credential-rejected one for the rest of the day; it stops only when every subscription refuses. Anthropic was removed from the example config (D020). `npm run check`: 154 offline tests passed. The new end-to-end test covers two subscriptions on separate pools, the first rejecting its credential, over two days with an attempt cap of 1.

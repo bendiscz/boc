@@ -21,7 +21,7 @@ See [`examples/boc.config.json`](../examples/boc.config.json). It contains synth
 - `aoc.contact` (optional for validation, required by the AoC client): operator contact placed in the `User-Agent`, e.g. an email address; printable ASCII without `;`, `(`, or `)`.
 - `sandbox.image` (optional for validation, required for solving): the solver toolchain image, pinned as a local image ID (`sha256:...`) or `name@sha256:...`; see `SANDBOX.md`.
 - `creditPools`: one or more native-unit aggregate allocations.
-- `subscriptions`: one or more explicitly identified provider subscriptions.
+- `subscriptions`: one or more explicitly identified provider subscriptions, in order of preference. Each attempt uses the first one that is eligible, within budget, and not currently refusing requests; a refusal fails over to the next (D021).
 
 Paths are resolved **relative to the configuration file**, not the shell's working directory. No `~`, shell command, or `${...}` expansion is supported. Paths and IDs cannot contain control characters. Store real credentials in ignored `.secrets/` or outside the repository and runtime artifacts in ignored `var/` or outside the repository. Configuration validation does not verify directory permissions, Git exclusion, symlinks, or account ownership; the future startup preflight must do so.
 

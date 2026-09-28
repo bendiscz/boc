@@ -135,3 +135,15 @@ On 2026-09-28, after the luna vs sol replay benchmark (EVALUATION.md), the opera
 - **Solving model:** `gpt-6-sol` is the solving model. It was faster and more reliable than `gpt-6-luna`, and its higher credit cost stays comfortably within budget.
 - **No parallel solving:** there is no agreement, race, or escalation ladder across models. The single-attempt-per-part run state (D012) stays.
 - **Anthropic dropped:** Anthropic support is no longer planned. This supersedes the provider scope of D017 and D019. BoC's providers are GitHub Copilot and ChatGPT/Codex. The dormant `anthropic` value in the configuration schema has no adapter, and `boc login` refuses it.
+
+## D021 — Failover between subscriptions on provider refusals
+
+On 2026-09-28, following the Codex credential outage during the benchmark:
+
+- **What counts as a refusal:** a usage limit or a rejected credential, reported before or during an attempt. The guard reduces these to safe categories (EVALUATION.md).
+- **Recording:** the attempt is recorded with outcome `refused`. `refusedAttempts` counts these separately, and they never count toward `maxAttemptsPerPart`, because the model did not fail.
+- **Failover:** the part continues with the next subscription in configuration order (operator preference). A subscription that refused is not retried within the same part.
+- **Run-level skipping:** the run loop skips a usage-limited subscription until the announced reset (default 60 minutes), and one with a rejected credential for the rest of the day. The next day gets a fresh chance, so an unattended multi-day run recovers after `boc login`.
+- **Stopping:** the run stops only when every subscription has refused.
+- **Limits:** the ledger still admits every call, so failover cannot bypass a limit, and units from different pools are never combined.
+- **Provider faults** (unknown charges) still stop the run without failover: the adapter's accounting just failed, and the charge must be reconciled first.

@@ -27,7 +27,7 @@ test("help works offline and explicitly reports the disabled live functionality"
   assert.deepEqual(output.stderr, []);
 });
 
-test("valid config is not reported as ready for live solving", async () => {
+test("check-config reads no credentials and reports each provider's readiness", async () => {
   const output = capture();
   assert.equal(
     await runCli(
@@ -37,7 +37,8 @@ test("valid config is not reported as ready for live solving", async () => {
     0,
   );
   assert.match(output.stdout.join("\n"), /Credential files were not read/);
-  assert.equal(output.stdout.filter((line) => line.includes("Live execution disabled")).length, 1);
+  assert.equal(output.stdout.filter((line) => line.includes("Calibrated adapter")).length, 2);
+  assert.equal(output.stdout.filter((line) => line.includes("Live execution disabled")).length, 0);
 });
 
 test("bad commands fail without echoing their potentially secret arguments", async () => {

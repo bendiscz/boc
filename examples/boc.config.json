@@ -28,16 +28,6 @@
         "perPuzzle": "50"
       },
       "providerCap": "none"
-    },
-    {
-      "id": "anthropic-pool",
-      "provider": "anthropic",
-      "unit": "usd",
-      "limits": {
-        "event": "50",
-        "perPuzzle": "5"
-      },
-      "providerCap": "none"
     }
   ],
   "subscriptions": [
@@ -72,28 +62,6 @@
       "limits": {
         "event": "500",
         "perPuzzle": "50"
-      },
-      "estimate": {
-        "pricing": "replace-with-official-rates",
-        "rates": {
-          "input": "0",
-          "output": "0",
-          "cacheRead": "0",
-          "cacheWrite": "0"
-        },
-        "safetyFactor": "1.5",
-        "assumedMaxOutputTokens": 32000
-      }
-    },
-    {
-      "id": "anthropic-api",
-      "provider": "anthropic",
-      "credentialFile": "../.secrets/anthropic.key",
-      "model": "replace-with-entitled-model",
-      "creditPool": "anthropic-pool",
-      "limits": {
-        "event": "50",
-        "perPuzzle": "5"
       },
       "estimate": {
         "pricing": "replace-with-official-rates",
