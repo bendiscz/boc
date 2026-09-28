@@ -31,7 +31,7 @@ Next concrete task: **to be decided with the operator.** The AoC 2024 days 13–
 Open question: **solver model choice and parallel solving** (raised by the operator on 2026-09-28; undecided, nothing changed).
 
 - **Question.** Is `gpt-6-sol` the right solving model, given that the goal is the correct answer as soon as possible? A faster, simpler model may reply sooner but fail on harder puzzles. Would solving one part with several different models in parallel give better results?
-- **Evidence so far.** On AoC 2025 and AoC 2024 days 13–25, `gpt-6-sol` took roughly 8–50 s per part, with no wrong answers. A wrong answer costs at least a 1-minute lockout plus a retry. In past-mode runs the wall time is dominated by the AoC request brake, not the model.
+- **Evidence so far.** On AoC 2025 and AoC 2024 days 13–25, `gpt-6-sol` took roughly 8–90 s per part, with no wrong answers (41 of 41 parts on the first submission). A wrong answer costs at least a 1-minute lockout plus a retry. In past-mode runs the wall time is dominated by the AoC request brake, not the model.
 - **Options to evaluate:**
   - an escalation ladder: a fast model first, then `gpt-6-sol` on failure or timeout;
   - a race: parallel models, first proposal wins;
