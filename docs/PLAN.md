@@ -9,7 +9,8 @@
   - Solving model: `gpt-6-sol`, with no parallel solving. Anthropic is dropped (D020).
 - **AoC account.** All of AoC 2025 (12 days, 24 stars) is solved on the dedicated account. So are AoC 2024 days 13–25 (25 stars; day 25 part 2 needs days 1–12), via `var/eval-2024-copilot.config.json` (days 13–19) and `var/eval-2024-codex.config.json` (days 20–25). Days 1–2 and 5–8 were solved via Copilot, days 3–4 and 9–12 via Codex. The days 5–12 rehearsal results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
 - **Private local setup** (ignored by Git):
-  - credentials in `.secrets/`: the AoC cookie, `copilot.json`, and `codex.json`;
+  - credentials in `.secrets/`: the AoC cookie, `copilot.json`, `codex.json`, `ntfy-topic-url`, and `healthchecks-ping-url` (the operator's `boc alert-test` passed on 2026-09-28);
+  - **the event config `var/event-2026.config.json`**: event 2026, storage `var/event-2026`, sol via Copilot first and then Codex (D021 failover), separate pools of 300 per event and 100 per puzzle each, alerts on, and the current image. It shares the credential files with the calibration configs, so never run them concurrently (D022). Before the event: recheck rates and models (milestone 7), and set the healthchecks cron day range once the calendar is published;
   - `var/calibration.config.json` (Copilot, `gpt-6-sol`) and `var/calibration-codex.config.json` (Codex, `gpt-6-sol`), each for event 2025 with its own storage directory, both with `assumedMaxOutputTokens: 8000` (lowered from 16000 on 2026-09-28).
 - **Allowance** (the operator confirmed on 2026-09-28 to keep it): each config allows 300 credits per event and 100 per puzzle in its native unit.
   - Copilot has spent 15.07 of 300 AI credits.
@@ -22,9 +23,9 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **to be decided with the operator.** Alerts (D023) are implemented and tested offline. The operator sets up the ntfy topic and healthchecks.io check (OPERATOR.md, "Alerts") and runs `boc alert-test`. Candidates:
+Next concrete task: **to be decided with the operator.** The event config exists (`var/event-2026.config.json`). Candidates:
 
-- a private combined event config (sol via Copilot first, then Codex, with alerts);
+- a supervised smoke replay of the combined config (a 2025 copy, one past day) to confirm that both adapters load together, both start checks pass, and Copilot is chosen first. It costs a few model credits and makes no AoC submissions.
 - an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
 - live failure drills via replay (milestone 7).
 
