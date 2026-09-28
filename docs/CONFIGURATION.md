@@ -18,6 +18,11 @@ See [`examples/boc.config.json`](../examples/boc.config.json). It contains synth
 - `event.year`: integer from 2015 to 9999. This identifies accounting scope; it does not establish an event's dates or day count.
 - `storageDir`: private runtime artifact directory.
 - `aoc.sessionCookieFile`: path to an externally supplied cookie file (owner-only permissions required when used).
+- `alerts` (optional, D023): paths to private owner-only files, never the destinations themselves.
+  - `ntfy.topicUrlFile` contains the ntfy topic URL, for example `https://ntfy.sh/<random-topic>`. The optional `ntfy.tokenFile` contains an access token.
+  - `healthchecks.pingUrlFile` contains the healthchecks.io ping URL.
+  - The URLs must be plain `https://`, with no embedded credentials.
+  - A configured but unreadable or invalid file stops `boc run` at start. `boc alert-test` sends one test push and one success ping.
 - `aoc.contact` (optional for validation, required by the AoC client): operator contact placed in the `User-Agent`, e.g. an email address; printable ASCII without `;`, `(`, or `)`.
 - `sandbox.image` (optional for validation, required for solving): the solver toolchain image, pinned as a local image ID (`sha256:...`) or `name@sha256:...`; see `SANDBOX.md`.
 - `creditPools`: one or more native-unit aggregate allocations.

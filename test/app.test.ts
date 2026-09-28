@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
+import type { Alert, Notifier } from "../src/alerts/notifier.ts";
 import { UNLOCK_RETRY_DELAYS_MS } from "../src/aoc/calendar.ts";
 import { type AocClient, AocError } from "../src/aoc/client.ts";
 import { AppError, runEvent } from "../src/app.ts";
@@ -472,4 +473,61 @@ test("readiness is checked 30 minutes before a release, and rechecked after a fa
   );
   assert.equal(f.calls.second, 0, "the repaired first subscription solved the day");
   assert.equal(f.calls.first, 2);
+});
+
+function recordingNotifier() {
+  const alerts: Alert[] = [];
+  const heartbeats: boolean[] = [];
+  const notifier: Notifier = {
+    notify: (a) => alerts.push(a),
+    heartbeat: (ok) => heartbeats.push(ok),
+    flush: async () => {},
+  };
+  return { alerts, heartbeats, notifier };
+}
+
+test("the run alerts on failed checks, failover, and each finished day", async (t) => {
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    checkCredential: async () => {
+      throw new AdapterError("Copilot token refresh failed; run boc login if this persists.");
+    },
+  });
+  const r = recordingNotifier();
+  await f.run({ notifier: r.notifier });
+  assert.deepEqual(r.heartbeats, [false], "the start check failed");
+  const [check, started, day1, day2] = r.alerts;
+  assert.equal(check?.priority, "urgent");
+  assert.equal(check?.title, "BoC 2025: start check failed");
+  assert.match(
+    check?.message ?? "",
+    /Subscription first: credential check failed; run boc login\.\nStill usable: second\./,
+  );
+  assert.equal(started?.title, "BoC 2025: started");
+  assert.equal(day1?.title, "BoC 2025: day-01 solved");
+  assert.equal(day1?.priority, "default");
+  assert.match(
+    day1?.message ?? "",
+    /^part 1: solved, 1 attempt\(s\), 1 submission\(s\); part 2: solved, 1 attempt\(s\), 1 submission\(s\)\. Credits: second 2 b\.$/,
+  );
+  assert.equal(day2?.title, "BoC 2025: day-02 solved");
+  assert.equal(r.alerts.length, 4);
+});
+
+test("a refusal alerts as a failover; a preflight error alerts as a stop", async (t) => {
+  const f = await twoSubscriptions(t, { refuses: () => true });
+  const r = recordingNotifier();
+  await f.run({ notifier: r.notifier, days: [1] });
+  const failover = r.alerts.find((a) => /failover/.test(a.title));
+  assert.equal(failover?.priority, "high");
+  assert.match(
+    failover?.message ?? "",
+    /subscription first unavailable \(credential rejected; run boc login\); failing over to second/,
+  );
+  const s = recordingNotifier();
+  await assert.rejects(f.run({ notifier: s.notifier, adapters: {} }), AppError);
+  assert.equal(s.alerts.at(-1)?.priority, "urgent");
+  assert.equal(s.alerts.at(-1)?.title, "BoC 2025: stopped with an error");
+  assert.match(s.alerts.at(-1)?.message ?? "", /No eligible provider adapter/);
+  assert.deepEqual(s.heartbeats, [false]);
 });

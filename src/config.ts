@@ -37,6 +37,16 @@ const configSchema = z
         .refine((value) => !/[;()]/.test(value))
         .optional(),
     }),
+    /**
+     * Operator alerts (D023). Only paths to private files are configured here: the
+     * ntfy topic URL (and optional access token) and the healthchecks.io ping URL.
+     */
+    alerts: z
+      .strictObject({
+        ntfy: z.strictObject({ topicUrlFile: filePath, tokenFile: filePath.optional() }).optional(),
+        healthchecks: z.strictObject({ pingUrlFile: filePath }).optional(),
+      })
+      .optional(),
     /** Solver executor (D010). Required for solving; not needed to validate budgets. */
     sandbox: z
       .strictObject({
@@ -160,6 +170,15 @@ export async function loadConfig(path: string): Promise<BocConfig> {
   config.aoc.sessionCookieFile = resolve(base, config.aoc.sessionCookieFile);
   for (const subscription of config.subscriptions) {
     subscription.credentialFile = resolve(base, subscription.credentialFile);
+  }
+  if (config.alerts?.ntfy) {
+    config.alerts.ntfy.topicUrlFile = resolve(base, config.alerts.ntfy.topicUrlFile);
+    if (config.alerts.ntfy.tokenFile) {
+      config.alerts.ntfy.tokenFile = resolve(base, config.alerts.ntfy.tokenFile);
+    }
+  }
+  if (config.alerts?.healthchecks) {
+    config.alerts.healthchecks.pingUrlFile = resolve(base, config.alerts.healthchecks.pingUrlFile);
   }
   // Catch equivalent relative credential paths after resolution. Do not open secrets here.
   return parseConfig(config);

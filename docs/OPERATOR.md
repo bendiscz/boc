@@ -72,6 +72,43 @@ node dist/main.js run boc.config.json --tui           # live dashboard
   - A subscription that fails the check is skipped, so the release uses the next one.
   - Do not run two BoC processes that share a credential file at the same time: refresh tokens can be single-use.
 
+## Alerts
+
+BoC can push alerts to your phone through [ntfy](https://ntfy.sh) and keep a [healthchecks.io](https://healthchecks.io) dead-man's switch (D023). Alerts contain day, part, status, timing, attempts, and credits, but never puzzle text, inputs, or answers.
+
+1. **ntfy.** Pick an unguessable topic, for example `boc-$(openssl rand -hex 16)`. On the public server, anyone who knows the name can read it. Subscribe to it in the ntfy phone app, and allow urgent notifications to bypass Do Not Disturb if you want 05:30 wake-ups.
+
+   Put the URL into a private file:
+   ```sh
+   printf 'https://ntfy.sh/%s\n' "$TOPIC" > .secrets/ntfy-topic-url && chmod 600 .secrets/ntfy-topic-url
+   ```
+   For a reserved topic or a self-hosted server, also add `tokenFile`.
+2. **healthchecks.io.** Create a check with a **Cron** schedule in the **UTC** timezone that expects a ping each event morning.
+   - Releases are at 05:00 UTC. BoC pings after its start check and after each T−30 check (04:30 UTC).
+   - A suitable schedule is `25 4 1-12 12 *` with a 20-minute grace. With it you learn at 04:45 UTC (05:45 in Prague) that BoC is not running or its host is down.
+   - Set the day range to the event's calendar once it is published; BoC does not assume it.
+   - BoC sends `/fail` when a check fails or a run stops, which alerts at once.
+   - Connect the check to ntfy (the same topic) and/or email.
+
+   Put the ping URL into `.secrets/healthchecks-ping-url` (mode 600).
+3. **Config.**
+   ```json
+   "alerts": {
+     "ntfy": { "topicUrlFile": "../.secrets/ntfy-topic-url" },
+     "healthchecks": { "pingUrlFile": "../.secrets/healthchecks-ping-url" }
+   }
+   ```
+4. **Test.** Run `node dist/main.js alert-test boc.config.json`, then check your phone and the healthchecks dashboard.
+
+| Priority | When |
+| --- | --- |
+| Urgent | A readiness check failed (start, T−30, T−5); the run stopped (every subscription refused, provider fault, AoC authentication, or any error) |
+| High | Failover to another subscription; a day with a part that gave up, stayed uncertain, or had no subscription |
+| Default | A day finished (both parts solved, or waiting for stars on the final day) |
+| Low | Run started; stopped by you (Ctrl-C) |
+
+Delivery is best effort. It uses a 10-second timeout, drops duplicates within 10 minutes, and sends at most 30 alerts an hour; failures are logged locally and never affect the run. Replay benchmarks never send alerts.
+
 ## Monitoring
 
 - `node dist/main.js status boc.config.json` shows read-only state and credits. It is safe while BoC runs.

@@ -1,3 +1,4 @@
+import { AlertConfigError, createNotifier } from "./alerts/notifier.ts";
 import { AocError } from "./aoc/client.ts";
 import { AppError, type Progress, runEvent } from "./app.ts";
 import { ReplayError, renderReplayReport, replayEvent } from "./bench/replay.ts";
@@ -38,6 +39,7 @@ Usage:
                                    Benchmark the config's model on days already solved in the
                                    sources: judged against their accepted answers, never
                                    contacting AoC; model calls are real and ledger-admitted
+  boc alert-test <config>          Send one test push (ntfy) and one success ping (healthchecks.io)
   boc status <config>              Show run state and credits (read-only, lock-free)
   boc views <config>               Regenerate private Markdown summaries from journals
   boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>
@@ -211,6 +213,25 @@ async function replay(config: BocConfig, flags: string[], output: Output, runtim
   for (const line of renderReplayReport(report)) output.out(line);
 }
 
+async function alertTest(config: BocConfig, output: Output): Promise<void> {
+  if (!config.alerts?.ntfy && !config.alerts?.healthchecks) {
+    throw new AppError("No alerts are configured (see docs/OPERATOR.md, Alerts).");
+  }
+  const problems: string[] = [];
+  const notifier = await createNotifier(config.alerts, { log: (m) => problems.push(m) });
+  notifier.notify({
+    priority: "default",
+    title: `BoC ${config.event.year}: test alert`,
+    message: "If you can read this, BoC alerts reach you.",
+  });
+  notifier.heartbeat(true);
+  await notifier.flush();
+  if (problems.length > 0) throw new AppError(`Alert test failed: ${problems.join("; ")}.`);
+  output.out(
+    `Sent${config.alerts.ntfy ? " a test push (ntfy)" : ""}${config.alerts.ntfy && config.alerts.healthchecks ? " and" : ""}${config.alerts.healthchecks ? " a success ping (healthchecks.io)" : ""}. Check that they arrived.`,
+  );
+}
+
 async function submissionCommand(args: string[], config: BocConfig, output: Output) {
   const [command, day, part, submission, note] = args;
   if (
@@ -316,6 +337,7 @@ export async function runCli(
     "login",
     "calibration-report",
     "replay",
+    "alert-test",
   ];
   if (!command || !known.includes(command) || !configPath) {
     output.err("Invalid command. Run boc --help.");
@@ -342,6 +364,7 @@ export async function runCli(
     else if (command === "login")
       await login(config, rest[1] ?? "", rest.slice(2), output, runtime);
     else if (command === "calibration-report") await calibrationReport(config, output);
+    else if (command === "alert-test") await alertTest(config, output);
     else if (command === "submission") {
       await submissionCommand([rest[0] ?? "", ...rest.slice(2)], config, output);
     } else await ledgerCommand([rest[0] ?? "", ...rest.slice(2)], config, output);
@@ -364,6 +387,7 @@ export async function runCli(
       error instanceof AocError ||
       error instanceof AdapterError ||
       error instanceof ReplayError ||
+      error instanceof AlertConfigError ||
       error instanceof PrivateFileError;
     output.err(safe ? error.message : "Command failed.");
     return 1;

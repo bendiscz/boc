@@ -163,3 +163,13 @@ On 2026-09-28 the operator decided that credentials are checked when BoC starts 
   - Traffic: one request at start and one at T−30 per unreleased day, plus one recheck at T−5 only if the T−30 check failed. Past or already solved days get no pre-release check.
 - **Timing.** At T−30 BoC runs the checks, and if any failed it rechecks at T−5. It then sleeps to the release as before. A run started within 30 minutes of a release relies on its start check.
 - **Verification.** Live on 2026-09-28, with one authenticated request made with the operator's go-ahead, `/settings` returned HTTP 200 (about 6 KB) with the logged-in marker, and the check reported `ok`. The operator confirmed in an anonymous browser window that without a valid session `/settings` redirects to `/2025`. BoC does not follow redirects and classifies any 3xx as `logged-out`.
+
+## D023 — Operator alerts: ntfy push and a healthchecks.io dead-man's switch
+
+On 2026-09-28 the operator chose ntfy for push notifications and healthchecks.io as a dead-man's switch. The dead-man's switch covers what push alone cannot: a stopped host, a crashed process, or a run that was never started.
+
+- **Senders:** only the trusted orchestrator sends alerts, never generated code.
+- **Destinations:** the ntfy topic URL, optional token, and healthchecks ping URL come from private owner-only files that the config references by path. They never appear in logs or errors. A configured but unusable file fails the run at start (fail closed).
+- **Content:** day, part, outcome, attempts, submission count, credits, time since release, and fixed-message error descriptions. Never puzzle text, inputs, or answers.
+- **Heartbeat:** a success ping after each passed readiness check (start, T−30, T−5). `/fail` goes out on a failed check or a stopped run. The operator's cron schedule on healthchecks.io defines "missing".
+- **Delivery:** best effort. A 10-second timeout per request, no redirects, deduplication within 10 minutes, at most 30 alerts per hour (then one "suppressed" notice), and a bounded flush before exit. A failure never affects a run. Replay benchmarks are silent.

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { SILENT_NOTIFIER } from "../alerts/notifier.ts";
 import type { AocClient } from "../aoc/client.ts";
 import { AocError } from "../aoc/client.ts";
 import { parsePuzzlePage } from "../aoc/parse.ts";
@@ -156,6 +157,7 @@ export async function replayEvent(options: ReplayOptions): Promise<ReplayReport>
   const now = () => new Date(clock() + skipped);
   const timeline: { at: number; message: string }[] = [];
   const results = await runEvent({
+    notifier: SILENT_NOTIFIER, // Benchmarks never page the operator.
     ...options,
     days: [...options.days],
     pastOnly: true,

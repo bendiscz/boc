@@ -22,11 +22,10 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **to be decided with the operator.** Failover (D021) and readiness checks (D022) are done. Candidates:
+Next concrete task: **to be decided with the operator.** Alerts (D023) are implemented and tested offline. The operator sets up the ntfy topic and healthchecks.io check (OPERATOR.md, "Alerts") and runs `boc alert-test`. Candidates:
 
-- operator alerts when a run stops or a check fails; this matters most for an unattended host;
-- an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
-- a private combined event config (sol via Copilot first, then Codex);
+- a private combined event config (sol via Copilot first, then Codex, with alerts);
+- an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
 - live failure drills via replay (milestone 7).
 
 Operator decision (2026-09-28): the 3.39-credit reservation held in `var/bench/sol-2024` stays held. The Codex dashboard is too aggregated to read one call's charge, and the reservation counts only against that bench config. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
@@ -342,3 +341,9 @@ Readiness checks (D022, 2026-09-28):
 - The tests exposed a selection bug: a repaired but refused subscription blocked failover because selection kept returning it first. The binding now receives the part's refused set as `exclude`.
 - `npm run check`: 159 offline tests passed. New tests: session check classification and cookie re-read; forced refresh persisted and sanitized; start-check failover without a model call; refusal repaired by refresh; T−30 and T−5 timing with a fix picked up at T−5.
 - Live, with the operator's go-ahead: one authenticated `GET /settings` through the real client's `checkSession()` returned HTTP 200 with the logged-in marker, and the check reported `ok`. Only the status, size, and marker presence were observed; no cookie or page content was printed. The logged-out response remains unverified by design (no unauthenticated request was made).
+
+Operator alerts (D023, 2026-09-28):
+
+- `src/alerts/notifier.ts` handles ntfy pushes and healthchecks.io pings from private files, and `boc alert-test` sends a test push and ping.
+- Wired into the run: failed checks, failover, day summaries, stops, and errors, including preflight errors, which now alert too because the notifier is created first. Replay is silent.
+- `npm run check`: 166 offline tests passed. New tests: file and URL validation; request format with title sanitizing, priority, and token; heartbeat URLs; deduplication and the rate limit with the suppressed notice; delivery failures logged without the destination; bounded flush; and run-level alerts for check failure, day summaries, failover, and a preflight error. Not live-tested.

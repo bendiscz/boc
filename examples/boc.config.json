@@ -8,6 +8,14 @@
     "sessionCookieFile": "../.secrets/aoc-session",
     "contact": "replace-with-operator-email@example.invalid"
   },
+  "alerts": {
+    "ntfy": {
+      "topicUrlFile": "../.secrets/ntfy-topic-url"
+    },
+    "healthchecks": {
+      "pingUrlFile": "../.secrets/healthchecks-ping-url"
+    }
+  },
   "creditPools": [
     {
       "id": "copilot-pool",

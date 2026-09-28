@@ -1,9 +1,11 @@
 import { appendFile } from "node:fs/promises";
+import { type Alert, createNotifier, type Notifier } from "./alerts/notifier.ts";
 import { isReleased, releaseTime, UNLOCK_RETRY_DELAYS_MS, waitForRelease } from "./aoc/calendar.ts";
 import { type AocClient, AocError, createAocClient, DEFAULT_RATE_CAP } from "./aoc/client.ts";
 import { AocService } from "./aoc/service.ts";
 import { createLedgerAdmission } from "./budget/admission.ts";
-import { CreditLedger, type LedgerStatus } from "./budget/ledger.ts";
+import { formatCredits } from "./budget/credits.ts";
+import { CreditLedger, LedgerError, type LedgerStatus } from "./budget/ledger.ts";
 import { selectSubscription } from "./budget/select.ts";
 import type { BocConfig } from "./config.ts";
 import {
@@ -15,8 +17,9 @@ import { AdapterError } from "./providers/github-copilot.ts";
 import { createDockerExecutor, type Executor } from "./sandbox/executor.ts";
 import { type PartOutcome, solvePuzzle } from "./solver/run.ts";
 import { type PuzzleId, puzzleId } from "./state/ids.ts";
+import { JournalError } from "./state/journal.ts";
 import { layout } from "./state/layout.ts";
-import { type RunState, RunStore } from "./state/run-state.ts";
+import { type RunState, RunStore, StateError } from "./state/run-state.ts";
 import { writeViews } from "./state/summary.ts";
 import { PrivateFileError } from "./util/private-file.ts";
 import { abortableSleep } from "./util/sleep.ts";
@@ -62,6 +65,8 @@ export interface RunOptions {
   readonly maxTurnsPerAttempt?: number;
   /** Calibration runs: refuse any day that is not already released (never wait). */
   readonly pastOnly?: boolean;
+  /** Operator alerts; default: from `config.alerts` (D023). Replay and tests inject their own. */
+  readonly notifier?: Notifier;
 }
 
 export interface Progress {
@@ -77,6 +82,35 @@ export interface DayResult {
 }
 
 export async function runEvent(options: RunOptions): Promise<DayResult[]> {
+  let log = options.onEvent ?? (() => {});
+  // Alerts fail closed here: a configured but unusable destination is a start error.
+  const notifier =
+    options.notifier ?? (await createNotifier(options.config.alerts, { log: (m) => log(m) }));
+  const alert = (priority: Alert["priority"], title: string, message: string) =>
+    notifier.notify({ priority, title: `BoC ${options.config.event.year}: ${title}`, message });
+  try {
+    return await runEventWith(options, notifier, alert, (next) => {
+      log = next;
+    });
+  } catch (error) {
+    if (options.signal?.aborted) {
+      alert("low", "stopped by the operator", "State is saved; run again to resume.");
+    } else {
+      alert("urgent", "stopped with an error", `${safeMessage(error)} State is saved.`);
+      notifier.heartbeat(false);
+    }
+    throw error;
+  } finally {
+    await notifier.flush();
+  }
+}
+
+async function runEventWith(
+  options: RunOptions,
+  notifier: Notifier,
+  alert: (priority: Alert["priority"], title: string, message: string) => void,
+  setLog: (log: (message: string) => void) => void,
+): Promise<DayResult[]> {
   const { config } = options;
   let log = options.onEvent ?? (() => {});
   const now = options.now ?? (() => new Date());
@@ -157,6 +191,7 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
         current,
       });
     };
+    setLog(log); // Alert delivery problems go to the run log too.
     const setCurrent = (puzzle: PuzzleId) => {
       current = puzzle;
     };
@@ -175,6 +210,47 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
     const executor =
       options.executor ?? createDockerExecutor({ image: config.sandbox?.image ?? "" });
     const results: DayResult[] = [];
+
+    /** One alert per finished day: timing, attempts, credits; never answers. */
+    const alertDay = (
+      puzzle: PuzzleId,
+      day: number,
+      part1: PartOutcome,
+      part2: PartOutcome | undefined,
+    ) => {
+      const state = store?.state.puzzles[puzzle];
+      const since = now().getTime() - releaseTime(year, day).getTime();
+      const timing =
+        since >= 0 && since < 24 * 3_600_000
+          ? ` ${Math.floor(since / 60_000)} min ${Math.floor((since % 60_000) / 1000)} s after release.`
+          : "";
+      const attempts = ([1, 2] as const)
+        .map((p) => {
+          const part = state?.parts[p];
+          return `part ${p}: ${p === 1 ? part1 : (part2 ?? "-")}, ${(part?.attempts ?? 0) - (part?.refusedAttempts ?? 0)} attempt(s), ${part?.submissions.length ?? 0} submission(s)`;
+        })
+        .join("; ");
+      const status = ledger.status([puzzle]);
+      const credits = config.subscriptions
+        .map((s) => {
+          const counter = status.counters.find(
+            (c) => c.scope === "subscription" && c.id === s.id && c.period === puzzle,
+          );
+          return counter && counter.spent > 0n
+            ? `${s.id} ${formatCredits(counter.spent)} ${counter.unit}`
+            : undefined;
+        })
+        .filter((c) => c !== undefined);
+      const solved = part1 === "solved" && part2 === "solved";
+      const trouble = [part1, part2].some(
+        (o) => o === "gave-up" || o === "uncertain" || o === "no-subscription",
+      );
+      alert(
+        trouble ? "high" : "default",
+        solved ? `${puzzle} solved` : `${puzzle} finished`,
+        `${attempts}.${timing}${credits.length > 0 ? ` Credits: ${credits.join(", ")}.` : ""}`,
+      );
+    };
 
     /**
      * Subscriptions that cannot be used now, until when (epoch ms). A usage limit
@@ -202,21 +278,41 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
     };
     /** Credentials (no model call) and the AoC session (one page read). */
     const checkReadiness = async (when: string): Promise<boolean> => {
-      let ok = true;
-      for (const id of adapters.keys()) if (!(await credentialOk(id, when))) ok = false;
+      const failures: string[] = [];
+      for (const id of adapters.keys()) {
+        if (!(await credentialOk(id, when))) {
+          failures.push(`Subscription ${id}: credential check failed; run boc login.`);
+        }
+      }
       if (client.checkSession) {
         const session = await client.checkSession();
         if (session === "logged-out") {
-          ok = false;
+          failures.push("The AoC session is not accepted; replace the cookie file.");
           log(`${when} check FAILED: the AoC session is not accepted; replace the cookie file.`);
         } else if (session === "unknown") {
           log(`${when} check: the AoC session could not be verified`);
         }
       }
-      if (ok) log(`${when} check passed`);
-      return ok;
+      if (failures.length === 0) {
+        log(`${when} check passed`);
+        notifier.heartbeat(true);
+        return true;
+      }
+      notifier.heartbeat(false);
+      const usable = [...adapters.keys()].filter((id) => !unavailable.has(id));
+      alert(
+        "urgent",
+        `${when} check failed`,
+        `${failures.join("\n")}\n${usable.length > 0 ? `Still usable: ${usable.join(", ")}.` : "No subscription is usable."}`,
+      );
+      return false;
     };
     await checkReadiness("start");
+    alert(
+      "low",
+      "started",
+      days ? `Days ${days.join(", ")}.` : "Solving released days, then waiting for releases.",
+    );
 
     let day: number | undefined = days ? days.shift() : 1;
     while (day !== undefined) {
@@ -299,19 +395,26 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
               (id) =>
                 id !== refusal.subscription && !((unavailable.get(id) ?? 0) > now().getTime()),
             );
-            log(
-              `subscription ${refusal.subscription} unavailable (${refusal.kind === "credential" ? "credential rejected; run boc login" : "usage limit"})${others.length > 0 ? `; failing over to ${others.join(", ")}` : "; no other subscription is available"}`,
-            );
+            const summary = `subscription ${refusal.subscription} unavailable (${refusal.kind === "credential" ? "credential rejected; run boc login" : "usage limit"})${others.length > 0 ? `; failing over to ${others.join(", ")}` : "; no other subscription is available"}`;
+            log(summary);
+            alert("high", `${puzzle} failover`, summary);
           },
           ...(options.maxAttemptsPerPart ? { maxAttemptsPerPart: options.maxAttemptsPerPart } : {}),
           ...(options.maxTurnsPerAttempt ? { maxTurnsPerAttempt: options.maxTurnsPerAttempt } : {}),
         });
         results.push({ puzzle, ...outcome });
         log(`${puzzle}: part 1 ${outcome.part1}, part 2 ${outcome.part2 ?? "-"}`);
+        alertDay(puzzle, day, outcome.part1, outcome.part2);
         if (outcome.part1 === "provider-fault" || outcome.part2 === "provider-fault") {
           // A fault means an unreconciled held reservation and an adapter whose accounting
           // just failed; stop the whole run rather than fail over to another subscription.
           log("stopping: provider outcome uncertain; reconcile held reservations first");
+          alert(
+            "urgent",
+            "stopped",
+            `${puzzle}: a provider charge is uncertain. Reconcile held reservations (boc status, boc ledger settle), then run again.`,
+          );
+          notifier.heartbeat(false);
           await writeViews(paths, bound.state, ledger.status());
           break;
         }
@@ -319,6 +422,12 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
           log(
             "stopping: every subscription refused requests; resolve the causes above, then run again",
           );
+          alert(
+            "urgent",
+            "stopped",
+            `${puzzle}: every subscription refused requests (usage limit or credential). Resolve it (boc login), then run again.`,
+          );
+          notifier.heartbeat(false);
           await writeViews(paths, bound.state, ledger.status());
           break;
         }
@@ -332,6 +441,19 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
     await store?.close().catch(() => {});
     await ledger.close().catch(() => {});
   }
+}
+
+/** Fixed-message error types only; anything else stays generic (it may carry paths). */
+function safeMessage(error: unknown): string {
+  const safe =
+    error instanceof AppError ||
+    error instanceof AocError ||
+    error instanceof AdapterError ||
+    error instanceof LedgerError ||
+    error instanceof JournalError ||
+    error instanceof StateError ||
+    error instanceof PrivateFileError;
+  return safe ? (error as Error).message : "Unexpected error; see the terminal.";
 }
 
 /** Fetch part 1 at/after release with a few bounded retries (clock skew), never polling. */
