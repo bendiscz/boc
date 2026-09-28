@@ -81,8 +81,14 @@ test("puzzle pages expose login, parts, accepted answers, and form level", () =>
     articles: 1,
     acceptedAnswers: [],
     answerLevel: 1,
+    fixedAnswer: undefined,
     complete: false,
   });
+  // A normal text answer input is not a fixed answer; a hidden one is (any attribute order).
+  const text = '<input type="hidden" name="level" value="2"/><input type="text" name="answer"/>';
+  assert.equal(parsePuzzlePage(text).fixedAnswer, undefined);
+  const button = "<input name='answer' value=\"0\" type=HIDDEN>";
+  assert.equal(parsePuzzlePage(button).fixedAnswer, "0");
   const done = parsePuzzlePage(page({ articles: 2, answers: ["12", "a&amp;b"] }));
   assert.deepEqual(done.acceptedAnswers, ["12", "a&b"]);
   assert.equal(done.complete, true);

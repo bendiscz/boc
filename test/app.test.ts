@@ -16,7 +16,7 @@ import { FAKE_MODEL, message, responseStream } from "./support/fake-pi.ts";
 
 // Synthetic pages only.
 const page = (articles: number, answers: string[]) =>
-  `<html><header><div class="user">synthetic</div></header><main>${'<article class="day-desc"><p>Synthetic.</p></article>'.repeat(articles)}${answers.map((a) => `<p>Your puzzle answer was <code>${a}</code>.</p>`).join("")}</main></html>`;
+  `<html><header><div class="user">synthetic</div></header><main>${'<article class="day-desc"><p>Synthetic.</p></article>'.repeat(articles)}${answers.map((a) => `<p>Your puzzle answer was <code>${a}</code>.</p>`).join("")}<form><input type="hidden" name="level" value="${answers.length + 1}"/></form></main></html>`;
 const correct = "<html><main><article><p>That's the right answer!</p></article></main></html>";
 
 async function setup(t: test.TestContext, start: string) {

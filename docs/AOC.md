@@ -37,9 +37,17 @@ The operator decided that BoC must **not** wait between the puzzle page, input, 
 - **Repeated downloads:** none. Statements and inputs are cached; reconciliation reads the puzzle page once per explicit call.
 - **Bug brake:** the client caps request starts in a sliding window, by default 10 per 10 minutes (`rateCap`). Normal solving stays below this cap; a runaway loop is slowed rather than allowed to hammer the site. This is not pacing: normal bursts go out immediately.
 
+## Final day's part 2
+
+The final day's part 2 has no puzzle. Once every other star is earned, the page shows a button whose form posts a hidden, fixed `answer`. From memory of past events, not validated live:
+
+- **Before the model runs:** for every part 2, BoC reads the answer form from the cached statement.
+- **Hidden answer (the button):** the orchestrator records a model-free attempt (`subscription: orchestrator`) that proposes the hidden value. The normal submission path then applies: write-ahead record, embargo, and duplicate refusal. The response is not the usual "right answer" text, so it becomes `uncertain`. One page read then reconciles it: a complete page with no part-2 answer counts as correct.
+- **No form (stars missing):** BoC spends nothing and returns `needs-stars`. A cached page without a form is refetched once per run, because stars earned on other days change it.
+- **Button already pressed without success:** a judged earlier submission of the hidden value makes BoC give up the part (`fixed-answer-rejected`) instead of looping.
+
 ## Not yet handled
 
-- The final day's special part 2 (it has no normal answer form).
 - The event calendar page, used to discover how many days an event has.
 - Exact AoC wording for every response variant.
 - Mapping of logged-out puzzle pages beyond the `class="user"` marker.

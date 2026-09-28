@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { PartNumber, PuzzleId } from "../state/ids.ts";
+import { isAnswer, type PartNumber, type PuzzleId } from "../state/ids.ts";
 import { type Layout, writeFileAtomic } from "../state/layout.ts";
 import { type RunState, type RunStore, StateError, submissionBlocker } from "../state/run-state.ts";
 import { type AocClient, AocError } from "./client.ts";
@@ -29,6 +29,12 @@ export interface AocServiceOptions {
 }
 
 export type ReconcileOutcome = "correct" | "not-correct" | "still-uncertain";
+
+/** What the part's answer form asks for. */
+export type AnswerForm =
+  | { readonly kind: "answer" }
+  | { readonly kind: "fixed"; readonly answer: string }
+  | { readonly kind: "none" };
 
 export class AocService {
   readonly #client: AocClient;
@@ -89,6 +95,32 @@ export class AocService {
     await writeFileAtomic(path, html);
     await this.#store.record({ type: "statement-fetched", puzzle, part, sha256: sha256(html) });
     return html;
+  }
+
+  /**
+   * The answer form of a visible part. A form with a hidden answer is the final
+   * day's part 2 button (no model needed). No form means nothing can be submitted,
+   * e.g. the final day before every other star is earned; a cached page without a
+   * form is refetched once per call, because earning stars elsewhere changes it.
+   */
+  async answerForm(puzzle: PuzzleId, part: PartNumber): Promise<AnswerForm> {
+    const classify = (html: string): AnswerForm | undefined => {
+      const page = parsePuzzlePage(html);
+      if (page.answerLevel !== part) return undefined;
+      if (page.fixedAnswer !== undefined && isAnswer(page.fixedAnswer)) {
+        return { kind: "fixed", answer: page.fixedAnswer };
+      }
+      return { kind: "answer" };
+    };
+    const cached = classify(await this.statement(puzzle, part));
+    if (cached) return cached;
+    const html = await this.#client.fetchPuzzle(this.#year, dayOf(puzzle));
+    const page = parsePuzzlePage(html);
+    if (!page.loggedIn) throw new AocError("auth", "AoC page is not authenticated.");
+    if (page.articles < part) throw new StateError("Puzzle part is not visible yet.");
+    await writeFileAtomic(this.#paths.statement(puzzle, part), html);
+    await this.#store.record({ type: "statement-fetched", puzzle, part, sha256: sha256(html) });
+    return classify(html) ?? { kind: "none" };
   }
 
   /** Personal input: downloaded once, then always served from private cache. */
@@ -179,6 +211,9 @@ export class AocService {
       if (accepted !== last.answer) {
         throw new StateError("Page shows a different accepted answer; operator review needed.");
       }
+      verdict = "correct";
+    } else if (part === 2 && page.complete) {
+      // The final day's part 2 shows no accepted answer, only completion.
       verdict = "correct";
     } else if (page.answerLevel === part && page.acceptedAnswers.length === part - 1) {
       verdict = "not-correct";

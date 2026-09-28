@@ -55,6 +55,8 @@ export type PartOutcome =
   | "gave-up"
   | "uncertain"
   | "unavailable"
+  /** Part 2 offers no answer form (the final day before every other star is earned). */
+  | "needs-stars"
   | "provider-fault"
   | "no-subscription";
 
@@ -124,6 +126,18 @@ export async function solvePart(options: SolveOptions, part: PartNumber): Promis
           log("attempt limit reached");
           break;
         }
+        if (part === 2) {
+          // Never spend credits on a part that cannot be submitted.
+          const form = await aoc.answerForm(puzzle, part);
+          if (form.kind === "none") {
+            log("no answer form (the final day needs every other star first)");
+            return "needs-stars";
+          }
+          if (form.kind === "fixed") {
+            await proposeFixed(options, part, form.answer, log);
+            break;
+          }
+        }
         const outcome = await runAttempt(options, part, log);
         if (outcome) return outcome;
         break;
@@ -133,6 +147,44 @@ export async function solvePart(options: SolveOptions, part: PartNumber): Promis
         throw new StateError(`Unexpected part status ${status}.`);
     }
   }
+}
+
+/**
+ * The final day's part 2 has no puzzle: the page's button posts a fixed value.
+ * The orchestrator proposes it as a model-free attempt; the normal submission
+ * path (write-ahead, embargo, duplicate refusal) then applies unchanged.
+ */
+async function proposeFixed(
+  options: SolveOptions,
+  part: PartNumber,
+  answer: string,
+  log: (message: string) => void,
+): Promise<void> {
+  const { store, puzzle } = options;
+  const before = store.state.puzzles[puzzle]?.parts[part];
+  const judged = (verdict: string) => verdict !== "not-sent" && verdict !== "cooldown";
+  if (before?.submissions.some((s) => s.answer === answer && judged(s.verdict))) {
+    await store.record({ type: "part-gave-up", puzzle, part, reason: "fixed-answer-rejected" });
+    log("the final-day button was already pressed without success");
+    return;
+  }
+  const attempt = (before?.attempts ?? 0) + 1;
+  await store.record({
+    type: "attempt-started",
+    puzzle,
+    part,
+    attempt,
+    subscription: "orchestrator",
+  });
+  await store.record({
+    type: "attempt-finished",
+    puzzle,
+    part,
+    attempt,
+    outcome: "answer",
+    answer,
+  });
+  log(`attempt ${attempt}: final-day button (no model call)`);
 }
 
 async function runAttempt(

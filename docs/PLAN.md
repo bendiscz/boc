@@ -22,7 +22,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **a longer supervised rehearsal** (milestone 6, "evaluate representative older puzzles") within the current allowance. The remaining AoC 2025 days are 5–12 (the 2025 event had 12 days).
+Next concrete task: **a longer supervised rehearsal** (milestone 6, "evaluate representative older puzzles") within the current allowance. The remaining AoC 2025 days are 5–12 (the 2025 event had 12 days). Day 12 is the final day; its part 2 button is handled offline (AOC.md) and needs every other star, so if any earlier star is missing it returns `needs-stars` at no cost.
 
 - **Proposed split:**
   - Copilot on days 5–8: `run var/calibration.config.json --days 5,6,7,8 --tui`.
@@ -35,7 +35,6 @@ Other open items:
 
 - Anthropic, once an API key exists (D019);
 - `assumedMaxOutputTokens` tuning;
-- final-day part 2 handling;
 - hash-pinned `uv`;
 - a Linux executor probe.
 
@@ -65,7 +64,7 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 ### 3. AoC transport and scheduling
 
 - [x] Implement a trusted cookie-file client with host restrictions, redacted errors, caching, timeouts, and polite request scheduling. (Pacing per operator decision: no delays in a solve burst, no needless requests, sliding-window bug brake; see AOC.md.)
-- [x] Parse puzzle/answer responses and handle authentication failures, part unlocks, cooldowns, duplicates, and ambiguous submissions. (Wording unvalidated against live responses; final-day part 2 outstanding.)
+- [x] Parse puzzle/answer responses and handle authentication failures, part unlocks, cooldowns, duplicates, and ambiguous submissions. (Wording unvalidated against live responses; the final-day part 2 button is handled offline, see AOC.md.)
 - [x] Implement past-puzzle mode and release waiting with verified calendar rules and a fake clock for tests. (`isReleased`/`waitForRelease`; day selection is done by the milestone 4 run loop.)
 - [x] Use only synthetic fixtures in committed tests.
 
@@ -290,3 +289,11 @@ Codex adapter verification (2026-09-27):
 Codex calibration and promotion (2026-09-27):
 
 - Operator-run calibration as recorded in FEASIBILITY.md. It passed by exact token reconciliation, since included usage debits no credits. Codex is promoted to `PRODUCTION_ADAPTERS` and reported eligible. `npm run check`: 141 offline tests passed.
+
+Final-day part 2 handling (offline):
+
+- The 2025 rehearsal ends on the event's final day (day 12), so part 2's button had to be handled before that run. See AOC.md, "Final day's part 2".
+- `parsePuzzlePage` now exposes a hidden `answer` input (`fixedAnswer`). `AocService.answerForm` classifies a part's form as `answer`, `fixed`, or `none`, refetching once when a cached page has no form. `reconcile` treats a complete page without a part-2 answer as correct.
+- Before any model call on part 2, the solve loop checks the form: a button becomes a model-free `orchestrator` attempt, and no form returns `needs-stars` with no spend.
+- The page and response wording are from memory, not validated live. An unrecognized response goes to `uncertain`, and reconciliation reads the page once.
+- `npm run check`: 143 offline tests passed. New tests: the button is pressed with only the part 1 model call admitted; missing stars spend nothing and succeed on a later run; hidden versus text answer inputs are parsed correctly.

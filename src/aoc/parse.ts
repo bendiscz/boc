@@ -30,6 +30,11 @@ export interface PuzzlePage {
   readonly acceptedAnswers: readonly string[];
   /** Level of the answer form, if one is shown. */
   readonly answerLevel: 1 | 2 | undefined;
+  /**
+   * Value of a hidden `answer` input. The final day's part 2 has no puzzle: once
+   * every other star is earned, the page offers a button that posts a fixed value.
+   */
+  readonly fixedAnswer: string | undefined;
   readonly complete: boolean;
 }
 
@@ -120,13 +125,31 @@ export function parsePuzzlePage(html: string): PuzzlePage {
     ...html.matchAll(/Your puzzle answer was\s*<code>([^<]{1,200})<\/code>/gi),
   ].map((m) => htmlToText(m[1] ?? ""));
   const level = /<input\b[^>]*name="level"[^>]*value="([12])"/i.exec(html)?.[1];
+  let fixedAnswer: string | undefined;
+  for (const match of html.matchAll(/<input\b[^>]*>/gi)) {
+    const attrs = inputAttributes(match[0]);
+    if (attrs.name === "answer" && attrs.type?.toLowerCase() === "hidden" && attrs.value) {
+      fixedAnswer = htmlToText(attrs.value);
+      break;
+    }
+  }
   return {
     loggedIn: /<div\b[^>]*class="user"/i.test(html),
     articles,
     acceptedAnswers,
     answerLevel: level === "1" ? 1 : level === "2" ? 2 : undefined,
+    fixedAnswer,
     complete: /Both parts of this puzzle are complete/i.test(htmlToText(html)),
   };
+}
+
+function inputAttributes(tag: string): Record<string, string | undefined> {
+  const attrs: Record<string, string> = {};
+  for (const m of tag.matchAll(/\b([a-z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>/]+))/gi)) {
+    const key = (m[1] ?? "").toLowerCase();
+    if (!(key in attrs)) attrs[key] = m[2] ?? m[3] ?? m[4] ?? "";
+  }
+  return attrs;
 }
 
 /**
