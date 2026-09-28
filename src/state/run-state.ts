@@ -463,6 +463,11 @@ export class RunStore {
   }
 
   /** Read-only view without the lock; interrupted work is shown as-is, not recovered. */
+  /** See `Journal.breakStaleLock`. */
+  static async breakStaleLock(directory: string): Promise<void> {
+    await Journal.breakStaleLock(directory);
+  }
+
   static async inspect(options: Omit<RunStoreOptions, "now">): Promise<RunState> {
     const records = await Journal.read({ directory: options.directory, schema: recordSchema });
     return RunStore.#replay(records, options.eventYear);

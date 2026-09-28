@@ -75,7 +75,7 @@ Stop BoC before any command that changes state. They all take the same locks.
 
 | Situation | What to do |
 | --- | --- |
-| "locked by another process" after a crash | `node dist/main.js ledger break-lock boc.config.json` (only for a dead process on this host). For the run-state lock, remove `runs/<year>/journal.lock` after confirming no BoC process is running. |
+| "locked by another process" after a crash | `node dist/main.js ledger break-lock boc.config.json` removes both the ledger and the run-state lock, only for a dead process on this host. |
 | Held / orphaned / uncertain reservations | Find the actual charge in the provider's usage records, then `ledger settle boc.config.json <id> <amount> operator:<receipt-ref>`. Held credits stay counted until settled. |
 | Unacknowledged overrun (admission blocked) | Investigate, then `ledger acknowledge boc.config.json <id> <note>`. The spent amount stays recorded. |
 | Uncertain submission | The next run reads the puzzle page to resolve it. If AoC provably never judged it (for example, an auth rejection), use `submission not-judged boc.config.json <day> <part> <n> <note>`. A new attempt may then propose the answer again; nothing is resubmitted automatically. |

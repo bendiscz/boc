@@ -79,8 +79,8 @@ test("entry point runs without SDK discovery or credentials", () => {
 });
 
 test("status is lock-free; ledger commands require exclusive access", async (t) => {
-  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
+  const { mkdtemp, readFile, rm, stat, writeFile } = await import("node:fs/promises");
+  const { hostname, tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const { CreditLedger } = await import("../src/budget/ledger.ts");
   const { loadConfig } = await import("../src/config.ts");
@@ -133,6 +133,12 @@ test("status is lock-free; ledger commands require exclusive access", async (t) 
   assert.match(await readFile(join(dir, "var/INDEX.md"), "utf8"), /2026/);
   output = capture();
   assert.equal(await runCli(["ledger", "break-lock", configPath], output), 0);
+  // A run-state lock left by a dead process is removed too.
+  const runLock = join(dir, "var/runs/2026/journal.lock");
+  await writeFile(runLock, JSON.stringify({ pid: 2 ** 22 + 12345, host: hostname(), at: "x" }));
+  output = capture();
+  assert.equal(await runCli(["ledger", "break-lock", configPath], output), 0, output.stderr.join());
+  await assert.rejects(stat(runLock), /ENOENT/);
 });
 
 test("run refuses to start without an eligible provider and validates day lists", async () => {

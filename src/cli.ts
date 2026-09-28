@@ -44,7 +44,7 @@ Usage:
                                    Record an authoritative charge for a held reservation
   boc ledger acknowledge <config> <reservation-id> <note>
                                    Acknowledge a reviewed credit overrun
-  boc ledger break-lock <config>   Remove a ledger lock left by a dead local process
+  boc ledger break-lock <config>   Remove ledger and run-state locks left by a dead local process
   boc submission not-judged <config> <day> <part> <submission#> <note>
                                    Operator override: AoC never judged this submission
   boc --help                       Show this help
@@ -94,8 +94,11 @@ async function withLedger(config: BocConfig, action: (ledger: CreditLedger) => P
 async function ledgerCommand(args: string[], config: BocConfig, output: Output): Promise<void> {
   const [command, id, ...rest] = args;
   if (command === "break-lock" && id === undefined) {
-    await CreditLedger.breakStaleLock(layout(config.storageDir, config.event.year).ledger);
-    output.out("Stale ledger lock removed.");
+    // Both journals of a dead local process; each is checked independently.
+    const paths = layout(config.storageDir, config.event.year);
+    await CreditLedger.breakStaleLock(paths.ledger);
+    await RunStore.breakStaleLock(paths.runs);
+    output.out("Stale ledger and run-state locks removed (if any).");
   } else if (command === "settle" && id && rest.length === 2) {
     const [amount = "", receipt = ""] = rest;
     if (!receipt.startsWith("operator:")) throw new UsageError();
