@@ -24,7 +24,6 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGEN
 
 Next concrete task: **to be decided with the operator.** Failover (D021) and readiness checks (D022) are done. Candidates:
 
-- a supervised one-request live check of the AoC `/settings` session check. It is unverified, and one authenticated GET needs the operator's go-ahead.
 - operator alerts when a run stops or a check fails; this matters most for an unattended host;
 - an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
 - a private combined event config (sol via Copilot first, then Codex);
@@ -342,3 +341,4 @@ Readiness checks (D022, 2026-09-28):
 - Forced OAuth refresh (`checkCredential`) and the AoC `/settings` session check run at start, at T−30 before each unreleased day, and at T−5 after a failure. A failed credential makes that subscription unavailable until a check passes; a credential refusal during a run triggers an immediate check.
 - The tests exposed a selection bug: a repaired but refused subscription blocked failover because selection kept returning it first. The binding now receives the part's refused set as `exclude`.
 - `npm run check`: 159 offline tests passed. New tests: session check classification and cookie re-read; forced refresh persisted and sanitized; start-check failover without a model call; refusal repaired by refresh; T−30 and T−5 timing with a fix picked up at T−5.
+- Live, with the operator's go-ahead: one authenticated `GET /settings` through the real client's `checkSession()` returned HTTP 200 with the logged-in marker, and the check reported `ok`. Only the status, size, and marker presence were observed; no cookie or page content was printed. The logged-out response remains unverified by design (no unauthenticated request was made).
