@@ -124,7 +124,7 @@ The adapter is implemented (`src/providers/github-copilot.ts`) and tested offlin
 - **`boc calibration-report`.** 15 calls, all settled, none held or uncertain. Estimated 392.58225 credits; charged 4.54678, all `derived` from reported token usage. Largest actual/estimate ratio: 0.026.
 - **GitHub's reported AI-credit usage for the same window:** 4.55. The difference is 0.0032 credits (0.07 %), within display rounding.
 - **Against the D016 criteria.** No call exceeded its estimate (max 0.026, limit 1.5×), and the totals agree well within 10 %. **Passed.**
-- **Observation.** The estimates are very conservative, about 86× the actual in total, because the 16000-token output cap dominates each reservation (roughly 26 credits per call). The limits are therefore not exceeded, but near a limit BoC may stop with up to one reservation of headroom unused. If that matters, a lower `assumedMaxOutputTokens` narrows the gap, at the risk of truncating reasoning-heavy answers.
+- **Observation.** The estimates are very conservative, about 86× the actual in total, because the 16000-token output cap dominates each reservation (roughly 26 credits per call). The limits are therefore not exceeded, but near a limit BoC may stop with up to one reservation of headroom unused. If that matters, a lower `assumedMaxOutputTokens` narrows the gap, at the risk of truncating reasoning-heavy answers. On 2026-09-28 the calibration configs were lowered to 8000, based on the rehearsal's measured maximum of 920 output tokens (EVALUATION.md).
 - **Recheck** rates, the model catalog, and a small calibration before each event.
 
 ## Anthropic authentication findings (2026-09-27)

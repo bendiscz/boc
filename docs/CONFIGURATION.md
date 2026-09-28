@@ -51,7 +51,10 @@ Each subscription needs an `estimate` block before it can run:
 
 - `rates` are native credits per million tokens, taken from the provider's current official price list for the subscription's model. The values above are illustrative only.
 - `safetyFactor` (default `1.5`) pads every estimate.
-- `assumedMaxOutputTokens` (default 32000) is used when the provider does not enforce an output cap.
+- `assumedMaxOutputTokens` (default 32000) is the per-response output bound, capped at the model maximum. On providers that enforce an output limit (Copilot), it is also sent as the request's cap. On providers that do not (Codex), it sizes the reservation, and the guard's streaming cutoff stops a response that outgrows it.
+  - It dominates each reservation.
+  - A value that is too low truncates responses. Each truncated response costs a failed attempt, and the run log reports it as `N response(s) hit the output cap`.
+  - Measured on AoC 2025 with `gpt-6-sol` and thinking off: the largest response was 920 output tokens and the median was about 30 (EVALUATION.md). The calibration configs use 8000. Raise it if the log reports cap hits.
 - `pricing` labels the rate source and appears in the charge receipts.
 
 Every `limits` object contains:

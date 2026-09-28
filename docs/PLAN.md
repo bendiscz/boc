@@ -10,30 +10,32 @@
 - **AoC account.** All of AoC 2025 (12 days, 24 stars) is solved on the dedicated account. Days 1–2 and 5–8 were solved via Copilot, days 3–4 and 9–12 via Codex. The days 5–12 rehearsal results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
 - **Private local setup** (ignored by Git):
   - credentials in `.secrets/`: the AoC cookie, `copilot.json`, and `codex.json`;
-  - `var/calibration.config.json` (Copilot, `gpt-6-sol`) and `var/calibration-codex.config.json` (Codex, `gpt-6-sol`), each for event 2025 with its own storage directory.
+  - `var/calibration.config.json` (Copilot, `gpt-6-sol`) and `var/calibration-codex.config.json` (Codex, `gpt-6-sol`), each for event 2025 with its own storage directory, both with `assumedMaxOutputTokens: 8000` (lowered from 16000 on 2026-09-28).
 - **Allowance** (the operator confirmed on 2026-09-28 to keep it): each config allows 300 credits per event and 100 per puzzle in its native unit.
   - Copilot has spent 15.07 of 300 AI credits.
   - Codex has spent 6.63 of 300 Codex credits.
   - No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`.
-- **Checks.** `npm run check`: 143 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 144 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **tune `assumedMaxOutputTokens`** (and any other estimate padding) using the rehearsal's measured actual/estimate ratios (EVALUATION.md). Keep D016 intact: every reservation must stay a padded upper bound, and runaway responses must still be cut off at the cap. Any change needs offline tests and must not lower a bound below what the output cap enforces.
+Next concrete task: **a harder historical evaluation** on an older event with later, harder days, for example the second half of AoC 2024. This is live and needs the operator's explicit go-ahead in that session; config event years must be changed or new configs created. Check the new `output cap` log lines to validate the 8000-token `assumedMaxOutputTokens` (EVALUATION.md, "Output cap tuning").
 
-After that: **a harder historical evaluation** on an older event with later, harder days (for example the second half of AoC 2024). This is live and needs the operator's explicit go-ahead in that session. Budget for the bug brake: about five requests per day, so a multi-day past run pauses about 8–9 minutes after every two days. Record results as in EVALUATION.md.
+Notes for it:
+
+- The ledger is per event year, so a 2024 config starts with a fresh event allowance. Confirm the allowance for that event with the operator.
+- Budget for the bug brake: about five requests per day, so a multi-day past run pauses about 8–9 minutes after every two days. Record results as in EVALUATION.md.
 
 Other open items:
 
 - Anthropic, once an API key exists (D019);
-- `assumedMaxOutputTokens` tuning;
 - hash-pinned `uv`;
 - a Linux executor probe.
 
-Live calls are allowed only through calibrated adapters (Copilot) or supervised `--calibrate` runs the operator starts; the orchestrator never makes live provider or AoC calls during development sessions on its own. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
+Live calls are allowed only through calibrated adapters (Copilot, Codex) or supervised `--calibrate` runs the operator starts; the orchestrator never makes live provider or AoC calls during development sessions on its own. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
 The documentation spike is complete, but neither subscription's hard per-call credit bound is established. Live validation is a later blocker; it does not prevent offline foundation/ledger work. Preserve unknown-charge reservations and do not replace native credits with estimates that can overshoot.
 
@@ -297,3 +299,10 @@ Days 5–12 rehearsal (live, 2026-09-28, agent-run with the operator's go-ahead)
 
 - Ran `boc run var/calibration.config.json --days 5,6,7,8` (Copilot), then `boc run var/calibration-codex.config.json --days 9,10,11,12` (Codex), both headless. Result: 16 of 16 parts correct, each on its first attempt and submission. The final-day button was validated live. Aggregates are in EVALUATION.md; private notes and logs are in `var/rehearsal/`.
 - Defect: the bug-brake waits were silent and could not be aborted. Every wait is now logged through `onBrake`, and the wait is abortable in `boc run`; a regression test was added. `npm run check`: 143 offline tests passed.
+
+Output cap tuning (offline, 2026-09-28):
+
+- Measured output tokens from the ledger receipts: 92 calls, maximum 920. The private calibration configs were lowered from 16000 to 8000 `assumedMaxOutputTokens`; the code default remains 32000.
+- Responses that hit the output cap (a provider `length` stop or the guard cutoff) are now logged per attempt. The system prompt asks for brief responses.
+- CONFIGURATION.md now describes the setting's dual role correctly: the enforced cap on Copilot, and the reservation size plus cutoff on Codex.
+- `npm run check`: 144 offline tests passed. The new test covers a truncated response that is reported and then retried.

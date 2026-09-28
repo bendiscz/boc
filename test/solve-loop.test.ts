@@ -349,3 +349,15 @@ test("a final day without every other star spends nothing, then rechecks on the 
   assert.deepEqual(f.aocCalls.slice(5), ["puzzle", "answer 2=0", "puzzle"]);
   assert.equal(f.prompts.length, 1);
 });
+
+test("responses truncated at the output cap are reported, and the retry proceeds", async (t) => {
+  const f = await fixture(t, {
+    aoc: [page(1, [], 1), reply("That's the right answer!"), page(1, ["7"])],
+    model: [() => message({ stopReason: "length" }), propose("7")],
+  });
+  const result = await f.solve();
+  assert.equal(result.part1, "solved");
+  assert.ok(f.events.some((e) => /attempt 1: 1 response\(s\) hit the output cap/.test(e)));
+  assert.ok(!f.events.some((e) => /attempt 2: .*output cap/.test(e)));
+  assert.equal(f.store.state.puzzles["day-01"]?.parts[1].attempts, 2);
+});

@@ -4,7 +4,7 @@ import type { Api, Model, ProviderStreams } from "@earendil-works/pi-ai";
 import { puzzleText } from "../aoc/parse.ts";
 import type { AocService } from "../aoc/service.ts";
 import { LedgerError } from "../budget/ledger.ts";
-import { type Admission, createGuardedStreams } from "../pi/guarded-streams.ts";
+import { type Admission, CUTOFF_MESSAGE, createGuardedStreams } from "../pi/guarded-streams.ts";
 import type { Executor } from "../sandbox/executor.ts";
 import { Workspace } from "../sandbox/workspace.ts";
 import type { PartNumber, PuzzleId } from "../state/ids.ts";
@@ -284,6 +284,14 @@ async function runAttempt(
       `${JSON.stringify(agent.state.messages, null, 1)}\n`,
     ).catch(() => log("transcript could not be written"));
   }
+
+  // Evidence for tuning the output cap (EVALUATION.md): a cap that is too low
+  // shows up as truncated responses and failed attempts.
+  const capped = agent.state.messages.filter(
+    (m) =>
+      m.role === "assistant" && (m.stopReason === "length" || m.errorMessage === CUTOFF_MESSAGE),
+  ).length;
+  if (capped > 0) log(`attempt ${attempt}: ${capped} response(s) hit the output cap`);
 
   const answer = tools.proposed();
   const where = { type: "attempt-finished" as const, puzzle, part, attempt };

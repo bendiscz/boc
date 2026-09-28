@@ -71,6 +71,9 @@ interface GuardedStreamsOptions {
  */
 type RequestOptions = SimpleStreamOptions;
 
+/** Error text of a response the guard stopped at its credit estimate. */
+export const CUTOFF_MESSAGE = "Response stopped: it exceeded its credit estimate.";
+
 /**
  * Explicit option allowlist. Everything else is dropped, including callbacks and
  * transports that can rewrite the approved request after admission (`onPayload`,
@@ -248,7 +251,7 @@ export function createGuardedStreams(config: GuardedStreamsOptions): ProviderStr
               // Settlement failure here falls through to the held/faulted path.
               await reservation.settleCutoff(structuredClone(partial));
               const stopped = failure(false);
-              stopped.errorMessage = "Response stopped: it exceeded its credit estimate.";
+              stopped.errorMessage = CUTOFF_MESSAGE;
               output.push({ type: "error", reason: "error", error: stopped });
               output.end();
               return;
