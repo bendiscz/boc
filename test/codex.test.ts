@@ -123,14 +123,14 @@ test("Codex estimates assume the configured output maximum because the API ignor
   assert.equal(f.calls[0]?.maxRetries, 0);
 });
 
-test("Codex credentials need a ChatGPT account; Codex is calibration-only", async (t) => {
+test("Codex credentials need a ChatGPT account; Codex is calibrated, Anthropic absent", async (t) => {
   const f = await setup(t, { accountId: undefined });
   await assert.rejects(
     createCodexAdapter(f.subscription, { provider: f.provider }),
     /no ChatGPT account/,
   );
   assert.ok(CALIBRATION_ADAPTERS["openai-codex"]);
-  assert.equal(PRODUCTION_ADAPTERS["openai-codex"], undefined);
+  assert.ok(PRODUCTION_ADAPTERS["openai-codex"]);
   assert.equal(PRODUCTION_ADAPTERS.anthropic, undefined);
   assert.equal(CALIBRATION_ADAPTERS.anthropic, undefined);
 });

@@ -11,7 +11,7 @@
   - Ctrl-C stops gracefully (exit code 130) and the run can be resumed.
 - Solve-loop orchestrator (`src/solver/run.ts`): cached fetch, a fresh per-attempt workspace carrying earlier files forward, ledger-admitted agent runs, a private transcript beside the workspace, write-ahead submission with embargo waits, retries with rejected answers and bounds in the prompt, part 2 progression, and restart resumption. Plus budget-aware subscription selection (`src/budget/select.ts`).
 - Solver agent loop over `pi-agent-core` with constrained tools (D015), the host-side attempt workspace, a production Docker executor, and a toolchain image (`SANDBOX.md`). Executor and toolchains verified locally with Docker Desktop.
-- Codex adapter implemented (D019; shares `oauth-adapter.ts` with Copilot). It is calibration-only and awaits its run. Anthropic is deferred because the policy forbids subscription OAuth, and there is no API key yet.
+- **Codex calibration passed (2026-09-27):** 14 calls, 1.54198 credits charged, max actual/estimate 0.035, and token totals exactly equal to the Codex dashboard (27354). The dashboard showed 0 credits because the usage was included in the plan. Codex is in `PRODUCTION_ADAPTERS` (D019; shares `oauth-adapter.ts` with Copilot). Anthropic is deferred: the policy forbids subscription OAuth, and there is no API key yet.
 - **Copilot calibration passed (2026-09-27):** 15 calls, 4.54678 credits charged versus 4.55 reported by GitHub, max actual/estimate 0.026. AoC 2025 days 1–2 were fully solved. The Copilot adapter is now in `PRODUCTION_ADAPTERS`.
 - GitHub Copilot adapter (`src/providers/github-copilot.ts`): credential file only, token refresh, output cap, and charges derived from usage. Plus `boc login`, calibration-only registration (`run --calibrate`), and `boc calibration-report` (D018). Not yet used live.
 - Best-effort credit limits (D016):
@@ -38,14 +38,15 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, `CONFIGURATION.md`, and `FEASIBILITY.md`. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **the Codex calibration run with the operator** (OPERATOR.md "Calibration run (Codex)"). The prepared private config is `var/calibration-codex.config.json`: AoC 2025, days 3 and 4 (not yet solved on the account), `gpt-6-sol`, 300 Codex credits for the event and 100 per puzzle. Evaluate against D016 and promote Codex if it passes.
+Next concrete task: a longer supervised rehearsal (milestone 6, "evaluate representative older puzzles"), with the operator's approval and allowance. Run both calibrated providers on more AoC 2025 days (5 onward) and record correctness, credits, latency, and failure modes in a private evaluation note. Commit only aggregate, puzzle-free findings. Turn defects into synthetic regression tests (milestone 6, last item).
 
-Afterwards:
+Other open items:
 
-- a longer rehearsal on more past days for solving strategy (milestone 6);
-- Anthropic, once the operator has a Claude Console API key (D019);
-- optional tuning of `assumedMaxOutputTokens`;
-- final-day part 2 handling.
+- Anthropic, once an API key exists (D019);
+- `assumedMaxOutputTokens` tuning;
+- final-day part 2 handling;
+- hash-pinned `uv`;
+- a Linux executor probe.
 
 Live calls are allowed only through calibrated adapters (Copilot) or supervised `--calibrate` runs the operator starts; the orchestrator never makes live provider or AoC calls during development sessions on its own. The `ModelRuntime` facade question (FEASIBILITY.md) must be decided before any live session factory.
 
@@ -94,7 +95,7 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 ### 6. Authorized historical evaluation
 
 - [ ] Ask for credential-file paths and perform the minimum required interactive authorization; never ask for pasted secrets.
-- [x] Validate actual subscription entitlements and credit reconciliation under a small explicit allocation. (Copilot, 2026-09-27; Codex and Anthropic pending.)
+- [x] Validate actual subscription entitlements and credit reconciliation under a small explicit allocation. (Copilot and Codex, 2026-09-27; Anthropic deferred.)
 - [x] Validate the dedicated AoC account/session and site conduct before submissions. (2025 days 1–2 fetched and submitted in the calibration run.)
 - [ ] Evaluate representative older puzzles privately; record correctness, credit usage, latency, and failure modes without consulting solutions.
 - [ ] Turn discovered defects into synthetic regression tests and refine scheduling/solver strategy.
@@ -294,3 +295,7 @@ Codex adapter verification (2026-09-27):
   - Anthropic login refused;
   - zero-charge early errors.
 - The operator's Codex workspace does not allow device-code login. Added `boc login … --browser`: it prints the authorization URL, cancels the paste prompt when the localhost callback arrives, and never prints tokens. `npm run check`: 141 offline tests passed.
+
+Codex calibration and promotion (2026-09-27):
+
+- Operator-run calibration as recorded in FEASIBILITY.md. It passed by exact token reconciliation, since included usage debits no credits. Codex is promoted to `PRODUCTION_ADAPTERS` and reported eligible. `npm run check`: 141 offline tests passed.

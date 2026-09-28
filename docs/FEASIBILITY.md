@@ -4,7 +4,7 @@ Inspected on **2026-09-27**. This is a documentation/source review plus offline 
 
 ## Decision (updated by D016): best-effort adapters after calibration
 
-**Status 2026-09-27:** GitHub Copilot passed calibration and is enabled (see "Copilot calibration result"). Codex and Anthropic have no adapter yet.
+**Status 2026-09-27:** GitHub Copilot and ChatGPT/Codex passed calibration and are enabled (see their calibration results below). Anthropic is deferred (D019).
 
 The hard-credit contract below was the original gate. Neither subscription met it. On 2026-09-27 the operator relaxed it to best-effort limits (D016): a padded estimate is reserved before each call, actual charges are recorded with their source, runaway responses are cut off, and the overshoot tolerance is bounded. An adapter becomes eligible once it exists and passes a supervised calibration run; see "Calibration protocol" below. No adapter exists yet, so `src/providers/readiness.ts` still reports every provider as ineligible. The evidence below explains why the limits are best effort and not guaranteed.
 
@@ -159,3 +159,16 @@ The adapter is implemented (`src/providers/openai-codex.ts`, sharing `oauth-adap
   - "Credit prices alone don't determine included subscription usage", and "If you reach your usage limits during an active turn, the agent will be able to continue working on that turn".
   - BoC charges all usage at credit rates (`derived`), whether it falls within included usage or is paid from credits. Comparing against the ChatGPT usage dashboard may therefore be approximate while usage stays inside the included allowance.
 - **Early errors.** A provider error before any output (for example a usage-limit 429) is now settled at zero (`estimated`, `error-before-output`) instead of at the full reservation. This applies to all adapters.
+
+### Codex calibration result (2026-09-27): passed, reconciled by tokens
+
+- **Setup.** Operator-supervised `boc run --calibrate --days 3,4` on AoC 2025 with the operator's ChatGPT Business seat (browser sign-in).
+  - Model: `gpt-6-sol`.
+  - Rates: input 50, cacheRead 5, cacheWrite 0, output 250 Codex credits per 1M tokens (official pricing page).
+  - Safety factor 1.5, assumed maximum output 16000 tokens, limits 300 per event and 100 per puzzle.
+- **Outcome.** All four parts were solved and accepted, with no errors or uncertain outcomes.
+- **`boc calibration-report`.** 14 calls, all settled. Estimated 88.0548; charged 1.54198 Codex credits, all `derived`. Largest actual/estimate ratio: 0.035.
+- **Tokens.** From the ledger receipts: 23817 input + 1361 output + 2176 cached input = **27354 tokens**. The Codex usage dashboard reported exactly **27354 tokens** for the window. Token accounting matches exactly, and the charged credits equal these tokens at the official rates.
+- **Credits on the dashboard: 0.** This is not rounding: 1.54 credits would be visible. It is consistent with the pricing page: included Business usage is not debited as credits ("After you reach your included limits, available credits let you continue working"). BoC therefore counts a credit-equivalent of all usage, which is conservative while usage stays within the included allowance.
+- **Against D016.** No call exceeded its estimate (max 0.035, limit 1.5×). The credit-total criterion could not be compared because no credits were debited. The exact token reconciliation plus official rates were accepted as passing. Promoted to `PRODUCTION_ADAPTERS`.
+- **Recheck** once usage exceeds the included allowance, comparing credits debited against BoC's charges, and before each event.

@@ -19,7 +19,7 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 ## Status
 
-The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an AoC transport, a constrained solver agent loop with a two-part solve orchestrator and budget-aware subscription selection, a networkless Docker executor with a toolchain image, and offline tests. GitHub Copilot passed a supervised live calibration on 2026-09-27 (AoC 2025 days 1–2 solved; BoC's charged credits matched GitHub's figure within 0.1 %). It is the only enabled provider. The Codex adapter awaits calibration, and Anthropic is deferred until an API key is available.
+The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an AoC transport, a constrained solver agent loop with a two-part solve orchestrator and budget-aware subscription selection, a networkless Docker executor with a toolchain image, and offline tests. GitHub Copilot passed a supervised live calibration on 2026-09-27 (AoC 2025 days 1–2 solved; BoC's charged credits matched GitHub's figure within 0.1 %). ChatGPT/Codex passed the same day (AoC 2025 days 3–4; token totals matched OpenAI's dashboard exactly). Both are enabled. Anthropic is deferred until an API key is available.
 
 Requires Node.js 24.21+ within the 24 LTS line and npm:
 

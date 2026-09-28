@@ -41,7 +41,11 @@ export const CALIBRATION_ADAPTERS: Readonly<
  * Production registry: adapters with a passing calibration recorded in
  * FEASIBILITY.md. There is no configuration switch to add one.
  * - github-copilot: calibrated 2026-09-27 (gpt-6-sol, 15 calls; see FEASIBILITY.md).
+ * - openai-codex: calibrated 2026-09-27 (gpt-6-sol, 14 calls; token totals matched exactly).
  */
 export const PRODUCTION_ADAPTERS: Readonly<
   Partial<Record<Subscription["provider"], AdapterFactory>>
-> = Object.freeze({ "github-copilot": (subscription) => createCopilotAdapter(subscription) });
+> = Object.freeze({
+  "github-copilot": (subscription) => createCopilotAdapter(subscription),
+  "openai-codex": (subscription) => createCodexAdapter(subscription),
+});

@@ -10,7 +10,7 @@ export interface ProviderReadiness {
 // it exists in src/providers/ and has passed a supervised calibration run recorded
 // in docs/FEASIBILITY.md; it is then registered in PRODUCTION_ADAPTERS.
 export function providerReadiness(provider: Provider): ProviderReadiness {
-  if (provider === "github-copilot") {
+  if (provider === "github-copilot" || provider === "openai-codex") {
     return {
       provider,
       eligible: true,

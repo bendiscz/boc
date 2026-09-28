@@ -45,7 +45,7 @@ Usage:
   boc --help                       Show this help
 
 Ledger and submission commands need exclusive access: stop BoC first.
-Calibrated providers: github-copilot. Others run only with --calibrate once implemented.`;
+Calibrated providers: github-copilot, openai-codex. Others run only with --calibrate once implemented.`;
 
 class UsageError extends Error {}
 

@@ -23,7 +23,7 @@ function capture() {
 test("help works offline and explicitly reports the disabled live functionality", async () => {
   const output = capture();
   assert.equal(await runCli([], output), 0);
-  assert.match(output.stdout.join("\n"), /Calibrated providers: github-copilot/);
+  assert.match(output.stdout.join("\n"), /Calibrated providers: github-copilot, openai-codex/);
   assert.deepEqual(output.stderr, []);
 });
 
@@ -37,7 +37,7 @@ test("valid config is not reported as ready for live solving", async () => {
     0,
   );
   assert.match(output.stdout.join("\n"), /Credential files were not read/);
-  assert.equal(output.stdout.filter((line) => line.includes("Live execution disabled")).length, 2);
+  assert.equal(output.stdout.filter((line) => line.includes("Live execution disabled")).length, 1);
 });
 
 test("bad commands fail without echoing their potentially secret arguments", async () => {
@@ -60,9 +60,8 @@ test("missing config is a sanitized operational error", async () => {
 
 test("only calibrated providers are reported eligible", () => {
   assert.equal(providerReadiness("github-copilot").eligible, true);
-  for (const provider of ["openai-codex", "anthropic"] as const) {
-    assert.equal(providerReadiness(provider).eligible, false);
-  }
+  assert.equal(providerReadiness("openai-codex").eligible, true);
+  assert.equal(providerReadiness("anthropic").eligible, false);
 });
 
 test("entry point runs without SDK discovery or credentials", () => {
