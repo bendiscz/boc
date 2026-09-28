@@ -390,6 +390,7 @@ test("locally provable non-dispatch leaves the answer submittable", async (t) =>
 test("the rate cap brakes runaway loops without delaying a normal burst", async (t) => {
   let now = 0;
   const starts: number[] = [];
+  const brakes: number[] = [];
   const impl = (async () => {
     starts.push(now);
     return new Response("ok");
@@ -404,9 +405,11 @@ test("the rate cap brakes runaway loops without delaying a normal burst", async 
       now += ms;
     },
     rateCap: { max: 3, windowMs: 60_000 },
+    onBrake: (ms) => brakes.push(ms),
   });
   for (let i = 0; i < 7; i++) await client.fetchPuzzle(2025, 1);
   assert.deepEqual(starts, [0, 0, 0, 60_000, 60_000, 60_000, 120_000]);
+  assert.deepEqual(brakes, [60_000, 60_000], "every brake wait is reported");
   assert.throws(() =>
     createAocClient({
       cookieFile: "x",

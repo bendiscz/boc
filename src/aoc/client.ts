@@ -60,9 +60,12 @@ export interface AocClientOptions {
   readonly sleep?: (ms: number) => Promise<void>;
   /**
    * Bug brake, not pacing: at most `max` request starts per `windowMs`. Excess
-   * requests sleep until the window frees. Normal solving stays far below it.
+   * requests sleep until the window frees. A single day's burst stays below it;
+   * back-to-back past days can reach it (about five requests per day).
    */
   readonly rateCap?: { readonly max: number; readonly windowMs: number };
+  /** Called before each bug-brake wait, so a long stall is never silent. */
+  readonly onBrake?: (waitMs: number) => void;
   readonly timeoutMs?: number;
 }
 
@@ -186,7 +189,9 @@ export function createAocClient(options: AocClientOptions): AocClient {
       for (;;) {
         while (starts.length > 0 && (starts[0] ?? 0) <= now() - rateCap.windowMs) starts.shift();
         if (starts.length < rateCap.max) break;
-        await sleep((starts[0] ?? 0) + rateCap.windowMs - now());
+        const waitMs = (starts[0] ?? 0) + rateCap.windowMs - now();
+        options.onBrake?.(waitMs);
+        await sleep(waitMs);
       }
       starts.push(now());
       let response: Response;

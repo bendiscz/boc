@@ -7,29 +7,24 @@
 - **Providers:**
   - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md has both results).
   - Anthropic is deferred (D019): the policy forbids subscription OAuth, and there is no API key.
-- **AoC account.** AoC 2025 days 1–4 are solved on the dedicated account: days 1–2 via Copilot, days 3–4 via Codex. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
+- **AoC account.** All of AoC 2025 (12 days, 24 stars) is solved on the dedicated account. Days 1–2 and 5–8 were solved via Copilot, days 3–4 and 9–12 via Codex. The days 5–12 rehearsal results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md. The operator's pacing decision: no delays within a solve burst, and no needless requests.
 - **Private local setup** (ignored by Git):
   - credentials in `.secrets/`: the AoC cookie, `copilot.json`, and `codex.json`;
   - `var/calibration.config.json` (Copilot, `gpt-6-sol`) and `var/calibration-codex.config.json` (Codex, `gpt-6-sol`), each for event 2025 with its own storage directory.
 - **Allowance** (the operator confirmed on 2026-09-28 to keep it): each config allows 300 credits per event and 100 per puzzle in its native unit.
-  - Copilot has spent 4.55 of 300 AI credits.
-  - Codex has spent 1.54 of 300 Codex credits.
+  - Copilot has spent 15.07 of 300 AI credits.
+  - Codex has spent 6.63 of 300 Codex credits.
   - No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`.
-- **Checks.** `npm run check`: 141 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 143 offline tests, credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **a longer supervised rehearsal** (milestone 6, "evaluate representative older puzzles") within the current allowance. The remaining AoC 2025 days are 5–12 (the 2025 event had 12 days). Day 12 is the final day; its part 2 button is handled offline (AOC.md) and needs every other star, so if any earlier star is missing it returns `needs-stars` at no cost.
+Next concrete task: **tune `assumedMaxOutputTokens`** (and any other estimate padding) using the rehearsal's measured actual/estimate ratios (EVALUATION.md). Keep D016 intact: every reservation must stay a padded upper bound, and runaway responses must still be cut off at the cap. Any change needs offline tests and must not lower a bound below what the output cap enforces.
 
-- **Proposed split:**
-  - Copilot on days 5–8: `run var/calibration.config.json --days 5,6,7,8 --tui`.
-  - Codex on days 9–12: `run var/calibration-codex.config.json --days 9,10,11,12 --tui`.
-- **Who runs it.** Confirm the plan with the operator first. The operator runs the commands, or the agent runs them only after explicit go-ahead in that session.
-- **What to record.** Per day and part: correct or not, attempts, credits, wall time, and failure modes. Write these to a private note in `var/`. Commit only aggregate, puzzle-free findings to FEASIBILITY.md or a new `docs/EVALUATION.md`.
-- **Defects.** Turn them into synthetic regression tests.
+After that: **a harder historical evaluation** on an older event with later, harder days (for example the second half of AoC 2024). This is live and needs the operator's explicit go-ahead in that session. Budget for the bug brake: about five requests per day, so a multi-day past run pauses about 8–9 minutes after every two days. Record results as in EVALUATION.md.
 
 Other open items:
 
@@ -87,7 +82,7 @@ The documentation spike is complete, but neither subscription's hard per-call cr
 - [ ] Ask for credential-file paths and perform the minimum required interactive authorization; never ask for pasted secrets.
 - [x] Validate actual subscription entitlements and credit reconciliation under a small explicit allocation. (Copilot and Codex, 2026-09-27; Anthropic deferred.)
 - [x] Validate the dedicated AoC account/session and site conduct before submissions. (2025 days 1–2 fetched and submitted in the calibration run.)
-- [ ] Evaluate representative older puzzles privately; record correctness, credit usage, latency, and failure modes without consulting solutions.
+- [x] Evaluate representative older puzzles privately; record correctness, credit usage, latency, and failure modes without consulting solutions. (AoC 2025 complete, EVALUATION.md; harder older days still worth evaluating.)
 - [ ] Turn discovered defects into synthetic regression tests and refine scheduling/solver strategy.
 
 ### 7. AoC 2026 readiness
@@ -297,3 +292,8 @@ Final-day part 2 handling (offline):
 - Before any model call on part 2, the solve loop checks the form: a button becomes a model-free `orchestrator` attempt, and no form returns `needs-stars` with no spend.
 - The page and response wording are from memory, not validated live. An unrecognized response goes to `uncertain`, and reconciliation reads the page once.
 - `npm run check`: 143 offline tests passed. New tests: the button is pressed with only the part 1 model call admitted; missing stars spend nothing and succeed on a later run; hidden versus text answer inputs are parsed correctly.
+
+Days 5–12 rehearsal (live, 2026-09-28, agent-run with the operator's go-ahead):
+
+- Ran `boc run var/calibration.config.json --days 5,6,7,8` (Copilot), then `boc run var/calibration-codex.config.json --days 9,10,11,12` (Codex), both headless. Result: 16 of 16 parts correct, each on its first attempt and submission. The final-day button was validated live. Aggregates are in EVALUATION.md; private notes and logs are in `var/rehearsal/`.
+- Defect: the bug-brake waits were silent and could not be aborted. Every wait is now logged through `onBrake`, and the wait is abortable in `boc run`; a regression test was added. `npm run check`: 143 offline tests passed.

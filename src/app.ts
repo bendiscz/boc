@@ -1,6 +1,6 @@
 import { appendFile } from "node:fs/promises";
 import { isReleased, UNLOCK_RETRY_DELAYS_MS, waitForRelease } from "./aoc/calendar.ts";
-import { type AocClient, AocError, createAocClient } from "./aoc/client.ts";
+import { type AocClient, AocError, createAocClient, DEFAULT_RATE_CAP } from "./aoc/client.ts";
 import { AocService } from "./aoc/service.ts";
 import { createLedgerAdmission } from "./budget/admission.ts";
 import { CreditLedger, type LedgerStatus } from "./budget/ledger.ts";
@@ -20,6 +20,8 @@ import { type RunState, RunStore } from "./state/run-state.ts";
 import { writeViews } from "./state/summary.ts";
 import { PrivateFileError } from "./util/private-file.ts";
 import { abortableSleep } from "./util/sleep.ts";
+
+const BRAKE_NOTE = `at most ${DEFAULT_RATE_CAP.max} requests per ${DEFAULT_RATE_CAP.windowMs / 60_000} minutes`;
 
 /**
  * Top-level run: preflight (fail closed before any network or ledger access),
@@ -156,6 +158,9 @@ export async function runEvent(options: RunOptions): Promise<DayResult[]> {
         cookieFile: config.aoc.sessionCookieFile,
         contact: config.aoc.contact,
         version: options.version,
+        sleep: (ms) => sleep(ms, options.signal),
+        onBrake: (ms) =>
+          log(`AoC request brake: waiting ${Math.ceil(ms / 1000)} s (${BRAKE_NOTE})`),
       });
     await client.prepare();
     const aoc = new AocService({ client, store, paths, year, now });
