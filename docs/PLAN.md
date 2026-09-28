@@ -22,17 +22,19 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **finish the luna vs sol benchmark** (EVALUATION.md, "Model benchmark"). Luna is done. The sol baseline stopped at 2025 day 10 part 2 because the Codex OAuth token was invalidated server-side.
+Next concrete task: **stop wasting attempts on already-rejected answers.** `propose_answer` should reject, back to the model and within the same attempt, an answer that was already judged wrong or that contradicts a known too-high/too-low bound. Add a regression test. This was found in the luna benchmark (EVALUATION.md).
 
-1. The operator re-authorizes Codex: `node dist/main.js login var/calibration-codex.config.json codex --browser`. The bench configs share `.secrets/codex.json`.
-2. With the operator's go-ahead, run the sol replays:
-   - `replay var/bench-sol-2025b.config.json --source var/calibration.config.json --source var/calibration-codex.config.json --days 10,11,12` (fresh storage; `var/bench/sol-2025` holds the valid days 1–10 part 1);
-   - `replay var/bench-sol-2024.config.json --source var/eval-2024-copilot.config.json --source var/eval-2024-codex.config.json --days 13,…,25`.
-   Private logs go in `var/bench/`.
-3. Compare per part and write the result in EVALUATION.md.
-4. Then fix the wasted-attempt defect: `propose_answer` should reject, back to the model and within the same attempt, an answer that was already rejected or that contradicts a known bound. Add a regression test.
+After that, choose with the operator:
 
-Open question: **solver model choice and parallel solving** (raised by the operator on 2026-09-28; undecided, nothing changed).
+- milestone 7 readiness (rechecks, live drills);
+- the parallel "agreement" design (open question below);
+- the remaining open items.
+
+Pending operator action:
+
+- `var/bench/sol-2024` holds a 3.39-credit reservation from the call that was in flight when the run was interrupted. Its charge is unknown. Settle it with `boc ledger settle` once the Codex usage dashboard gives evidence, or leave it held; it counts against that bench config only.
+
+Open question: **solver model choice and parallel solving** (raised by the operator on 2026-09-28). Model choice has been measured: keep `gpt-6-sol`; luna was slower and less reliable (EVALUATION.md, "Model benchmark"). Parallel solving is still undecided.
 
 - **Question.** Is `gpt-6-sol` the right solving model, given that the goal is the correct answer as soon as possible? A faster, simpler model may reply sooner but fail on harder puzzles. Would solving one part with several different models in parallel give better results?
 - **Evidence so far.** On AoC 2025 and AoC 2024 days 13–25, `gpt-6-sol` took roughly 8–90 s per part, with no wrong answers (41 of 41 parts on the first submission). A wrong answer costs at least a 1-minute lockout plus a retry. In past-mode runs the wall time is dominated by the AoC request brake, not the model.
@@ -334,3 +336,9 @@ Replay benchmark and provider-refusal handling (2026-09-28):
 - Added `boc replay` (`src/bench/replay.ts`). Tests cover: judging against accepted answers without contacting AoC; a virtual embargo; the solver never seeing the answer it is judged against; refusal of shared storage and of missing sources; and a tampered page that would leak an answer, refused before any model call.
 - Live, with the operator's go-ahead: luna on 2025 days 1–12 and 2024 days 13–25, and sol on 2025 until the Codex token was invalidated. Results are in EVALUATION.md.
 - Provider refusals (usage limit, rejected credential) now stop the part as `provider-unavailable` after one attempt, and the run stops. The raw error goes only into a private `provider-error.txt`. `npm run check`: 148 offline tests passed.
+
+Benchmark completion and runaway fixes (2026-09-28):
+
+- After the operator re-authorized Codex, the sol replays finished: 2025 days 10–12 in `var/bench/sol-2025b` and 2024 days 13–25; luna's two failed days were rerun in `var/bench/luna-2024b`. The comparison is in EVALUATION.md.
+- Runaway responses are now stopped after 120 s, or after 60 s of stall, and settled like the credit cutoff. Attempts have a 10-minute deadline between turns. Cut-off partial output is kept privately, and the retry prompt explains the previous failure. `break-lock` also clears the run-state lock.
+- `npm run check`: 151 offline tests passed. The new tests cover: slow and stalled streams, including an upstream that ignores the abort; a stalled response followed by an informed retry; the attempt deadline; and the run-state lock.

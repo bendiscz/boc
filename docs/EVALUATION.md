@@ -44,28 +44,46 @@ A supervised live evaluation of harder, later days, run by the agent with the op
 - **Reservations:** about 13–18 Copilot credits and 3.2–4.2 Codex credits per call. Across all calls in a run, estimates totalled 38× the actual charge for Copilot and 17× for Codex, down from about 80× and 43×. The largest per-call actual/estimate ratio was 0.082 for Copilot and 0.156 for Codex.
 - **Brake:** as expected, it paused for about 8–9 minutes after every two days. Every wait was logged. No defects were found.
 
-## Model benchmark: `gpt-6-luna` vs `gpt-6-sol` on Codex (2026-09-28, in progress)
+## Model benchmark: `gpt-6-luna` vs `gpt-6-sol` on Codex (2026-09-28)
 
-Method: `boc replay` (src/bench/replay.ts) reruns the normal solve loop on days BoC already solved. Statements and inputs come from the source run's private cache, and proposals are judged against the answer AoC accepted. It never contacts AoC and never reads the cookie. The solver sees only what a live run would see. A wrong answer's embargo is simulated rather than slept, and feedback is a plain "wrong" with no too-high or too-low hints. Model calls are real and ledger-admitted in separate bench storage (300/100 per config). Each part is one sample, so this is indicative, not statistically strong.
+**Method.** `boc replay` (src/bench/replay.ts) reruns the normal solve loop on days BoC already solved: AoC 2025 days 1–12 and AoC 2024 days 13–25, 48 scored parts in all.
+- **Inputs:** statements and inputs come from the source run's private cache. Proposals are judged against the answer AoC accepted.
+- **Isolation:** it never contacts AoC or reads the cookie, and the solver sees only what a live run would see.
+- **Simulation:** a wrong answer's embargo is simulated rather than slept. Feedback is a plain "wrong", with no too-high or too-low hints.
+- **Model calls:** real and ledger-admitted, in separate bench storage (300/100 per config), both through Codex.
+- **Limits:** each part is a single sample, so the results are indicative, not statistically strong.
 
-Codex rates are from the [Codex pricing page](https://developers.openai.com/codex/pricing), fetched 2026-09-28. Luna costs 2.5 input, 0.25 cached input, and 12.5 output credits per 1M tokens, 1/20 of sol's.
+**Rates.** From the [Codex pricing page](https://developers.openai.com/codex/pricing), fetched 2026-09-28: luna costs 2.5 input, 0.25 cached input, and 12.5 output credits per 1M tokens, 1/20 of sol's.
 
-| Run | Scored parts | Correct | First submission correct | Median / mean s per solved part | Codex credits |
-| --- | --- | --- | --- | --- | --- |
-| luna, 2025 days 1–12 | 23 | 23 | 23 | 19.4 / 24.0 | 1.14 |
-| luna, 2024 days 13–25 | 25 | 23 | 23 | 20.4 / 32.1 | 3.41 |
-| sol, 2025 days 1–10 part 1 (valid part of the run) | 19 | 19 | 19 | 14.0 / 14.7 | 7.96 (incl. zero-cost refusals) |
+| | luna | sol |
+| --- | --- | --- |
+| Correct on the first run (48 parts) | 46 | 48 (after excluding the credential outage, below) |
+| Correct on the first submission | 46 | 48 |
+| Failures | 2024 day 15 part 2 and day 24 part 2: four attempts, two wrong submissions each | none |
+| Median / mean seconds, on the 43 parts both solved on the first run | 20.0 / 27.3 | 15.5 / 16.6 |
+| Faster on | 14 of 43 parts | 29 of 43 parts |
+| Slowest parts | 162 s (2024 day 16 part 2), 92 s (2024 day 19 part 1) | 70 s (2024 day 24 part 2); 22 min on 2024 day 15 part 2 before the runaway fix |
+| Codex credits spent | about 5.1 (including the rerun) | about 35.9, plus 3.39 still held from an interrupted call |
 
-- **Luna failures:** both were on harder 2024 part 2s (days 15 and 24). They used all four attempts with two wrong submissions each.
-  - Twice, luna re-proposed an answer that had already been rejected. The orchestrator refused to resubmit it, but the attempt was spent.
-  - On day 24 part 2, luna proposed answers with `??` placeholders, which is guessing.
-- **Latency:** on the easy 2025 days, luna was not faster than sol; it was slower per solved part.
-- **Sol run interrupted:** from 2025 day 10 part 2 onward, every sol request failed before any output, at zero charge. The private diagnostics show that the Codex OAuth token was invalidated server-side. This is not a model result, and those parts are excluded.
+**Findings:**
+- **Speed:** luna is not faster. It is slower on median and mean, and much slower on some harder parts, probably because it takes more turns.
+- **Correctness:** luna is less reliable. It failed two hard parts, with wrong answers, re-proposals of rejected answers, and answers containing `??` placeholders.
+  - A rerun of those two parts with the later fixes solved both: day 15 part 2 on the third attempt after another wrong answer, and day 24 part 2 first time, in 164 s against sol's 70 s.
+  - Luna's failures are therefore stochastic, not systematic, but they cost lockouts in a live run.
+- **Cost:** luna costs about 1/7 as much per solved part.
+- **Conclusion:** stay with `gpt-6-sol` for solving. Luna's cost advantage does not matter at the current budget: sol's heaviest day was under 9 of 100 per-puzzle credits. Its lower accuracy and speed work against the goal of the correct answer as soon as possible. The parallel "agreement" idea (PLAN.md) could use luna as a cheap second opinion, but the latency data gives no speed reason to race it.
+- **Sol credential outage:** the Codex OAuth token was invalidated server-side at 2025 day 10 part 2. This is not a model result. After the operator signed in again, those days were rerun in fresh storage and are counted.
 
 ### Defects found
 
 - **Provider refusals burned attempts.** A rejected credential or a usage limit made every attempt fail within milliseconds, so BoC gave up on every remaining part. In a live event this would forfeit the day. Fixed:
-  - The guard reduces provider errors to safe categories (usage limit, with reset minutes when given; rejected credential; other).
+  - The guard reduces provider errors to safe categories: usage limit (with reset minutes when given), rejected credential, or other.
   - A refusal ends the part as `provider-unavailable` after one attempt, and the run stops with a clear message.
   - The raw provider error goes only into a private `provider-error.txt` beside the attempt transcript.
-- **Re-proposing a rejected answer wastes an attempt.** Found with luna; not yet fixed, so the sol baseline runs under identical conditions. See PLAN.md.
+- **Runaway responses ran for 11 minutes.** On sol's 2024 day 15 part 2, two attempts each spent about 11 minutes on a single response. Each streamed about 12.5k tokens slowly, until the credit cutoff stopped it. Codex does not enforce an output cap, so nothing else limited the response's duration. The retry received the identical prompt and failed the same way. Fixed:
+  - A response is stopped after 120 s, or after 60 s with no stream data, and settled like the credit cutoff; the run does not fault. Across 529 normal turns, none took more than 37 s including the tool run.
+  - Attempts have a 10-minute deadline, checked between turns.
+  - The partial output of a stopped response is kept privately in `cutoff-partial.json`.
+  - The retry prompt now says why the previous attempt failed.
+- **A killed run left a run-state lock that no command could clear.** `boc ledger break-lock` now clears both the ledger and the run-state lock of a dead local process.
+- **Re-proposing a rejected answer wastes an attempt.** Found with luna and seen again in the rerun. Not yet fixed; see PLAN.md.
