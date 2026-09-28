@@ -82,6 +82,19 @@ export interface DayResult {
 }
 
 export async function runEvent(options: RunOptions): Promise<DayResult[]> {
+  // Argument errors are shown to whoever ran the command; they need no alert.
+  const days = options.days;
+  const now = options.now ?? (() => new Date());
+  if (days && days.length === 0) throw new AppError("No days selected.");
+  if (days?.some((day) => !Number.isInteger(day) || day < 1 || day > 31)) {
+    throw new AppError("Days must be from 1 to 31.");
+  }
+  if (
+    options.pastOnly &&
+    (!days || days.some((day) => !isReleased(options.config.event.year, day, now())))
+  ) {
+    throw new AppError("Calibration runs are limited to already released days.");
+  }
   let log = options.onEvent ?? (() => {});
   // Alerts fail closed here: a configured but unusable destination is a start error.
   const notifier =
@@ -118,9 +131,6 @@ async function runEventWith(
   const year = config.event.year;
 
   const days = options.days ? [...options.days] : undefined;
-  if (options.pastOnly && (!days || days.some((day) => !isReleased(year, day, now())))) {
-    throw new AppError("Calibration runs are limited to already released days.");
-  }
   // Preflight, fail closed: providers first, before any AoC or ledger access.
   const factories = options.adapters ?? PRODUCTION_ADAPTERS;
   const adapters = new Map<string, ProviderAdapter>();
@@ -162,10 +172,6 @@ async function runEventWith(
   }
   if (!options.executor && !config.sandbox) {
     throw new AppError("Configure sandbox.image (see docs/SANDBOX.md).");
-  }
-  if (days && days.length === 0) throw new AppError("No days selected.");
-  if (days?.some((day) => !Number.isInteger(day) || day < 1 || day > 31)) {
-    throw new AppError("Days must be from 1 to 31.");
   }
 
   const paths = layout(config.storageDir, year);

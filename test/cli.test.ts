@@ -142,10 +142,21 @@ test("status is lock-free; ledger commands require exclusive access", async (t) 
   await assert.rejects(stat(runLock), /ENOENT/);
 });
 
-test("run refuses to start without an eligible provider and validates day lists", async () => {
+test("run refuses to start without an eligible provider and validates day lists", async (t) => {
+  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
   const example = fileURLToPath(new URL("../examples/boc.config.json", import.meta.url));
   let output = capture();
   assert.equal(await runCli(["run", example], output), 1);
+  assert.match(output.stderr.join(), /Cannot read the ntfy topic file/, "alerts fail closed first");
+  const dir = await mkdtemp(join(tmpdir(), "boc-cli-run-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const { alerts: _alerts, ...withoutAlerts } = JSON.parse(await readFile(example, "utf8"));
+  const quiet = join(dir, "boc.config.json");
+  await writeFile(quiet, JSON.stringify({ ...withoutAlerts, storageDir: "var" }));
+  output = capture();
+  assert.equal(await runCli(["run", quiet], output), 1);
   assert.match(output.stderr.join(), /No eligible provider adapter/);
   for (const flags of [
     ["--days"],
