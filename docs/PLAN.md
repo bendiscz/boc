@@ -54,7 +54,7 @@
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
-- **Checks.** `npm run check`: 186 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 187 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
@@ -66,7 +66,7 @@ Next concrete task: **finish the Raspberry Pi host (D027, [RPI.md](RPI.md)).** `
   - Every systemd drill passed: `kill -9`, an outside SIGTERM, `systemctl stop`, and a reboot.
   - Daily checks (D029).
   - A Pi replay benchmark: 12/12; the Pi is 4.8× slower per core than the Mac, and no run came near the 60-second cap (EVALUATION.md).
-- **Open decision:** raise the solver's 60-second run cap on the Pi to keep the Mac's headroom, for example to 240 s. That is still inside the 10-minute attempt deadline. Today the cap is a code default (`maxRunTimeoutSeconds`), not a config setting.
+- **Decided (2026-09-30):** `sandbox.maxRunSeconds` is configurable (default 60, at most 540), and the event config on the Pi sets 240.
 - **The operator:** move the system from the SD card to an SSD before 1 December.
 - **Afterwards:** the end-to-end rehearsal (milestone 7).
 

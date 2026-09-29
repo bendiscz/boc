@@ -55,6 +55,11 @@ const configSchema = z
           .regex(
             /^(sha256:[a-f0-9]{64}|[a-z0-9][a-z0-9._/-]{0,199}@sha256:[a-f0-9]{64})(?![\s\S])/,
           ),
+        /**
+         * Longest single program run the solver may request, in seconds (default 60).
+         * Raise it on slower hosts (RPI.md); at most 540, inside the 10-minute attempt deadline.
+         */
+        maxRunSeconds: z.number().int().min(1).max(540).optional(),
       })
       .optional(),
     creditPools: z

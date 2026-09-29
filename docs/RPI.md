@@ -98,7 +98,7 @@ The script checks the following. It is offline, except that `--probe` runs synth
 
 **⚠ Page size.** The Pi 5 kernel uses 16K memory pages, which `check.sh` reports. Some arm64 binaries assume 4K pages. If the toolchain probe fails, add `kernel=kernel8.img` to `/boot/firmware/config.txt` to use the 4K kernel, reboot, and probe again.
 
-**Speed.** A short replay benchmark shows whether the solver's 60-second limit per program run suits the Pi's CPU. It spends a few model credits; start it only with the operator's go-ahead:
+**Speed.** The Pi 5 is about 4.8× slower per core than the development Mac (EVALUATION.md, 2026-09-30), so the event config sets `"sandbox": { "maxRunSeconds": 240 }` (the default is 60) to keep the Mac's headroom. A short replay benchmark shows how programs fare on the Pi's CPU. It spends a few model credits; start it only with the operator's go-ahead:
 
 ```sh
 cd ~/boc && boc replay var/<bench>.config.json --source var/<source>.config.json --days 1,2

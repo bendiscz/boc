@@ -563,6 +563,7 @@ async function runEventWith(
           },
           ...(options.maxAttemptsPerPart ? { maxAttemptsPerPart: options.maxAttemptsPerPart } : {}),
           ...(options.maxTurnsPerAttempt ? { maxTurnsPerAttempt: options.maxTurnsPerAttempt } : {}),
+          ...(config.sandbox?.maxRunSeconds ? { maxRunSeconds: config.sandbox.maxRunSeconds } : {}),
         });
         results.push({ puzzle, ...outcome });
         log(`${puzzle}: part 1 ${outcome.part1}, part 2 ${outcome.part2 ?? "-"}`);

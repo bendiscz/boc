@@ -25,6 +25,7 @@ See [`examples/boc.config.json`](../examples/boc.config.json). It contains synth
   - A configured but unreadable or invalid file stops `boc run` at start. `boc alert-test` sends one test push and one success ping.
 - `aoc.contact` (optional for validation, required by the AoC client): operator contact placed in the `User-Agent`, e.g. an email address; printable ASCII without `;`, `(`, or `)`.
 - `sandbox.image` (optional for validation, required for solving): the solver toolchain image, pinned as a local image ID (`sha256:...`) or `name@sha256:...`; see `SANDBOX.md`.
+- `sandbox.maxRunSeconds` (optional, default `60`, at most `540`): the longest single program run the solver may request. Raise it on slower hosts to keep the same headroom; the Raspberry Pi event config uses `240` (RPI.md). Attempts still end after 10 minutes.
 - `creditPools`: one or more native-unit aggregate allocations.
 - `subscriptions`: one or more explicitly identified provider subscriptions, in order of preference. Each attempt uses the first one that is eligible, within budget, and not currently refusing requests; a refusal fails over to the next (D021).
 

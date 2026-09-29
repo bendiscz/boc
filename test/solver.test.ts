@@ -313,3 +313,42 @@ test("workspace modes let the container read files even under a strict umask", a
     process.umask(previous);
   }
 });
+
+test("the run tool's timeout cap is configurable and defaults to 60 s", async (t) => {
+  const workspace = await Workspace.create(join(await tmp(t), "work"), []);
+  const seen: number[] = [];
+  const executor: Executor = {
+    run: async (request: RunRequest) => {
+      seen.push(request.timeoutMs);
+      return {
+        exitCode: 0,
+        timedOut: false,
+        stdout: "",
+        stderr: "",
+        truncated: false,
+        durationMs: 1,
+      };
+    },
+  };
+  const runTool = (seconds?: number) =>
+    createSolverTools({
+      workspace,
+      executor,
+      onProposal: () => {},
+      ...(seconds ? { maxRunTimeoutSeconds: seconds } : {}),
+    }).tools.find((tool) => tool.name === "run");
+  const byDefault = runTool();
+  const raised = runTool(240);
+  assert.match(byDefault?.description ?? "", /Timeout up to 60s/);
+  assert.match(raised?.description ?? "", /Timeout up to 240s/);
+  await byDefault?.execute("a", { argv: ["true"] });
+  await raised?.execute("b", { argv: ["true"] });
+  await raised?.execute("c", { argv: ["true"], timeoutSeconds: 200 });
+  assert.deepEqual(seen, [60_000, 240_000, 200_000]);
+  const example = JSON.parse(await readFile("examples/boc.config.json", "utf8"));
+  const withCap = (maxRunSeconds: number) =>
+    parseConfig({ ...example, sandbox: { image: `sha256:${"a".repeat(64)}`, maxRunSeconds } });
+  assert.equal(withCap(240).sandbox?.maxRunSeconds, 240);
+  assert.throws(() => withCap(541), "beyond the attempt deadline");
+  assert.throws(() => withCap(0));
+});

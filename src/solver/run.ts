@@ -69,6 +69,8 @@ export interface SolveOptions {
   readonly maxResponseMs?: number;
   /** Longest silence within a response stream (default 60 s). */
   readonly stallMs?: number;
+  /** Longest program run the solver may request, in seconds (default 60). */
+  readonly maxRunSeconds?: number;
   /** Attempt deadline, checked between turns so no call is ever aborted (default 10 min). */
   readonly maxAttemptMs?: number;
   readonly now?: () => Date;
@@ -342,6 +344,7 @@ async function runAttempt(
   const attemptStart = Date.now();
   let timedOut = false;
   const tools = createSolverTools({
+    ...(options.maxRunSeconds ? { maxRunTimeoutSeconds: options.maxRunSeconds } : {}),
     workspace,
     executor: options.executor,
     onProposal: (answer) => log(`attempt ${attempt} proposed ${answer}`),
