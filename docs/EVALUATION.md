@@ -155,3 +155,13 @@ Supervised, agent-run with the operator's go-ahead, on AoC 2024. Days 1–12 of 
 - **A2b** (2024 day 3): `kill -9` 50 ms after the `submitting` log line. The kill again landed before AoC recorded the answer. The rerun removed both stale locks, reconciled the answer as `not-correct` (the level was still open), and started attempt 2. That attempt re-derived the same answer and proposed it (the prompt now calls its outcome unknown). The one allowed resubmission was judged correct, and part 2 followed on its first submission. Eight AoC requests; the brake never engaged.
 - Credits for all live AoC drills: Copilot 11.82492, Codex 0.
 
+## AoC 2024, days 2 and 4–12 (2026-09-29)
+
+A supervised live run by the agent with the operator's go-ahead: `boc run` with a copy of the event config (failover Copilot → Codex, D021–D026), event 2024, storage `var/bench/finish-2024`, alerts off. It used a single process with headless output.
+
+- **Correctness:** 20 of 20 parts correct, each on its first attempt and first submission. Day 2 part 1 gave the same answer that drill A2 had re-derived three times without being allowed to propose it. That confirms AoC had never judged that interrupted submission (defect G).
+- **Credits:** Copilot 24.74 (the failover never triggered), Codex 0.
+- **Brake:** as expected, it paused for about 9 minutes after every two days.
+- **Host sleep:** one unexplained 12-minute gap before day 7 matched idle sleep on the development Mac (`pmset` log). The rest of the run was kept awake with `caffeinate`. This is not a BoC defect, but it is one more reason for a dedicated host that never sleeps.
+- **Account state:** AoC 2024 days 1–24 are now fully solved on the account, and day 25 part 1 is solved. Day 25 part 2, the final-day button, now has every other star and can be pressed.
+

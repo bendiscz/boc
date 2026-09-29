@@ -45,6 +45,7 @@
     | `smoke-2025` | combined-config smoke test | 2.04 |
     | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78 (the held 26.09 was settled at 0); Codex 1.04 |
     | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46; Codex 0.88 + 2.02 (the held 13.00 was settled at 0) |
+    | `finish-2024` | AoC 2024 days 2 and 4–12, all first-submission correct | Copilot 24.74; Codex 0 |
     | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills, and A2b after D026 | Copilot 11.82492; Codex 0 |
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
@@ -57,7 +58,7 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGEN
 
 Next concrete task: **to be decided with the operator.** The open findings of the live AoC drills were decided and implemented on 2026-09-29 (D026): one resubmission after an unknown outcome, and a separate brake window for session checks.
 
-Candidates: the unattended-host setup (Raspberry Pi 5, systemd with `Restart=on-failure`, `npm run test:linux`, and a replay benchmark for the run timeout) and the end-to-end rehearsal (milestone 7). Day 2 of AoC 2024 is still unsolved on the account (drill A2); the drill storage `var/bench/drill-aoc-2024` cannot finish it (defect G).
+Candidates: the unattended-host setup (Raspberry Pi 5, systemd with `Restart=on-failure`, `npm run test:linux`, and a replay benchmark for the run timeout) and the end-to-end rehearsal (milestone 7). AoC 2024 days 1–24 are solved on the account; day 25 part 2 (the button) is pending.
 
 Operator decision (2026-09-29): every held reservation was settled at 0 (`operator:2026-09-29-operator-instruction-settle-zero`), including the 3.39 in `var/bench/sol-2024` that was kept on 2026-09-28. No reservation is held. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
@@ -425,4 +426,6 @@ Operator decisions on the AoC drills (D026, 2026-09-29):
   - end to end, an interrupted submission resubmitted once and solved;
   - session checks braked in their own window.
 - Live, with the operator's go-ahead: drill A2b (2024 day 3), a crash during a submission, then a resubmission judged correct. Both parts solved (EVALUATION.md).
+
+AoC 2024 days 2 and 4–12 (live, 2026-09-29, agent-run with the operator's go-ahead): 20/20 correct on the first submission, 24.74 Copilot credits (EVALUATION.md). Idle sleep on the development Mac paused the run once.
 
