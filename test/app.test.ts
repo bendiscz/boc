@@ -196,14 +196,23 @@ test("live mode sleeps until release before the first request, then stops after 
   f.released.add(1);
   const results = await f.run();
   assert.equal(results[0]?.part2, "solved");
-  assert.ok(f.aocCalls[0]?.endsWith("@2025-12-01T05:00:03.000Z"), f.aocCalls[0]);
+  const firstPuzzle = f.aocCalls.find((c) => c.startsWith("puzzle"));
+  assert.ok(firstPuzzle?.endsWith("@2025-12-01T05:00:01.000Z"), firstPuzzle);
+  assert.deepEqual(
+    f.aocCalls
+      .slice(0, 2)
+      .map((c) => c.split(" ")[0])
+      .sort(),
+    ["input", "puzzle"],
+    "the page and the input are requested together at release",
+  );
   const sum = (n: number) => f.sleeps.slice(0, n).reduce((a, b) => a + b, 0);
   assert.ok(
     f.sleeps.slice(0, 61).every((ms) => ms <= 60_000),
     "wall-clock steps of at most 60 s until the release",
   );
   assert.equal(sum(30), 1_800_000, "first to the pre-release check, 30 min before");
-  assert.equal(sum(61), 3_603_000, "then on to the release plus its margin");
+  assert.equal(sum(61), 3_601_000, "then on to the release plus its 1 s margin");
   assert.equal(results.at(-1)?.part1, "not-released");
   assert.equal(results.length, 2, "default mode stops at the first unavailable day");
   const dir = join(f.root, "var/ledger/2025");
@@ -693,7 +702,16 @@ test("a wait of months before the event sleeps in short steps, never past the re
   const results = await f.run({ days: [1] });
   assert.equal(results[0]?.part2, "solved");
   assert.ok(f.sleeps.length > 80_000 && f.sleeps.every((ms) => ms <= 60_000));
-  assert.ok(f.aocCalls[0]?.endsWith("@2025-12-01T05:00:03.000Z"), f.aocCalls[0]);
+  const firstPuzzle = f.aocCalls.find((c) => c.startsWith("puzzle"));
+  assert.ok(firstPuzzle?.endsWith("@2025-12-01T05:00:01.000Z"), firstPuzzle);
+  assert.deepEqual(
+    f.aocCalls
+      .slice(0, 2)
+      .map((c) => c.split(" ")[0])
+      .sort(),
+    ["input", "puzzle"],
+    "the page and the input are requested together at release",
+  );
 });
 
 test("a long wait before the event checks readiness daily, then as usual before the release", async (t) => {

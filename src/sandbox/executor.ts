@@ -2,11 +2,17 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 /**
- * Generated-code execution boundary (D010). The only production implementation
- * runs a fresh networkless, non-root, read-only-root, resource-limited container
- * per command, with the attempt workspace mounted read-only at /work and a
- * bounded exec-enabled tmpfs for build output and scratch. No host environment,
- * credentials, Docker socket, or network reach the container.
+ * Generated-code execution boundary (D010). The production implementation runs
+ * networkless, non-root, read-only-root, resource-limited containers with the
+ * attempt workspace mounted read-only at /work and a bounded exec-enabled tmpfs
+ * for build output and scratch. No host environment, credentials, Docker socket,
+ * or network reach the container.
+ *
+ * `run` starts a fresh container per command. A session (D030) keeps one such
+ * container per attempt and runs each command with `docker exec`, which saves the
+ * container start (about 0.35 s per run on a Raspberry Pi 5). Commands of one
+ * attempt then share /tmp; a timeout or abort kills the whole container, and the
+ * next command starts a fresh one.
  */
 
 export interface RunRequest {
@@ -29,7 +35,19 @@ export interface RunResult {
 
 export interface Executor {
   run(request: RunRequest): Promise<RunResult>;
+  /** One warm container for an attempt's commands (D030); started at once. */
+  openSession?(workspace: string): ExecutorSession;
+  /** Remove containers left behind by a crashed process. */
+  cleanup?(): Promise<void>;
 }
+
+export interface ExecutorSession {
+  run(request: Omit<RunRequest, "workspace">): Promise<RunResult>;
+  close(): Promise<void>;
+}
+
+/** Label of every solver container, so a restart can remove leftovers. */
+export const CONTAINER_LABEL = "boc.solver=1";
 
 export interface DockerExecutorOptions {
   /** Operator-trusted image: a local image ID (sha256:...) or name@sha256:digest. */
@@ -73,21 +91,48 @@ function dockerClientEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+function checkArgv(argv: readonly string[]): void {
+  if (argv.length === 0 || argv.length > 32) throw new Error("Invalid command.");
+  if (!argv.every((a) => ARG_PATTERN.test(a))) throw new Error("Invalid command.");
+}
+
 export function dockerArgs(
   options: DockerExecutorOptions,
   request: RunRequest,
   name: string,
 ): string[] {
+  checkArgv(request.argv);
+  return [...containerArgs(options, request.workspace, name), options.image, ...request.argv];
+}
+
+/** `docker run -d` of a session container that idles until commands are exec'd. */
+export function dockerSessionArgs(
+  options: DockerExecutorOptions,
+  workspace: string,
+  name: string,
+): string[] {
+  const args = containerArgs(options, workspace, name);
+  // --init reaps the exec'd processes; `sleep infinity` keeps the container alive.
+  args.splice(1, 0, "--detach", "--init");
+  return [...args, options.image, "sleep", "infinity"];
+}
+
+/** `docker exec` of one command in a session container (same user, env, and /work). */
+export function dockerExecArgs(name: string, argv: readonly string[]): string[] {
+  checkArgv(argv);
+  return ["exec", "--user=65534:65534", "--workdir=/work", name, ...argv];
+}
+
+function containerArgs(options: DockerExecutorOptions, workspace: string, name: string): string[] {
   if (!IMAGE_PATTERN.test(options.image)) throw new Error("Image must be pinned by digest.");
-  if (request.argv.length === 0 || request.argv.length > 32) throw new Error("Invalid command.");
-  if (!request.argv.every((a) => ARG_PATTERN.test(a))) throw new Error("Invalid command.");
-  if (!request.workspace.startsWith("/") || /[,:\n]/.test(request.workspace)) {
+  if (!workspace.startsWith("/") || /[,:\n]/.test(workspace)) {
     throw new Error("Invalid workspace path.");
   }
   const args = [
     "run",
     "--rm",
     `--name=${name}`,
+    `--label=${CONTAINER_LABEL}`,
     "--pull=never",
     "--network=none",
     "--read-only",
@@ -99,13 +144,12 @@ export function dockerArgs(
     `--cpus=${options.cpus ?? "2"}`,
     "--user=65534:65534",
     "--ipc=none",
-    `--mount=type=bind,source=${request.workspace},target=/work,readonly`,
+    `--mount=type=bind,source=${workspace},target=/work,readonly`,
     `--tmpfs=/tmp:rw,exec,nosuid,nodev,size=${options.scratch ?? "1g"},uid=65534,gid=65534,mode=700`,
     "--workdir=/work",
     "--entrypoint=",
   ];
   for (const [key, value] of Object.entries(CONTAINER_ENV)) args.push("--env", `${key}=${value}`);
-  args.push(options.image, ...request.argv);
   return args;
 }
 
@@ -113,81 +157,164 @@ export function createDockerExecutor(options: DockerExecutorOptions): Executor {
   const docker = options.docker ?? "docker";
   const maxOutput = options.maxOutputBytes ?? 64 * 1024;
   const maxTimeout = options.maxTimeoutMs ?? 120_000;
+  const limit = (ms: number) => Math.min(Math.max(1_000, ms), maxTimeout);
+  const kill = (name: string) =>
+    new Promise<void>((resolve) => {
+      spawn(docker, ["rm", "-f", name], { env: dockerClientEnv(), stdio: "ignore" })
+        .on("error", () => resolve())
+        .on("close", () => resolve());
+    });
+  const invoke = (
+    args: string[],
+    timeoutMs: number,
+    signal: AbortSignal | undefined,
+    stop: () => void,
+  ) => runCli(docker, args, { timeoutMs, maxOutput, ...(signal ? { signal } : {}), stop });
+
   return {
     run(request) {
       const name = `boc-${randomUUID()}`;
       const args = dockerArgs(options, request, name);
-      const timeoutMs = Math.min(Math.max(1_000, request.timeoutMs), maxTimeout);
-      const started = Date.now();
-      return new Promise<RunResult>((resolve) => {
-        const child = spawn(docker, args, {
-          env: dockerClientEnv(),
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-        const out: Buffer[] = [];
-        const err: Buffer[] = [];
-        let outBytes = 0;
-        let errBytes = 0;
-        let truncated = false;
-        let timedOut = false;
-        const collect = (chunks: Buffer[], add: (n: number) => number) => (chunk: Buffer) => {
-          const used = add(0);
-          const room = maxOutput - used;
-          if (room <= 0) {
-            truncated = true;
-            return;
+      // Kill the container, not just the CLI; --rm then removes it.
+      return invoke(args, limit(request.timeoutMs), request.signal, () => void kill(name));
+    },
+
+    openSession(workspace) {
+      let name = "";
+      let ready: Promise<boolean> | undefined;
+      let closed = false;
+      const start = () => {
+        name = `boc-${randomUUID()}`;
+        const args = dockerSessionArgs(options, workspace, name);
+        const current = name;
+        ready = invoke(args, 60_000, undefined, () => void kill(current)).then(
+          (r) => r.exitCode === 0 && !r.timedOut,
+        );
+        return ready;
+      };
+      void start();
+      return {
+        async run(request) {
+          if (closed) throw new Error("Session closed.");
+          const started = Date.now();
+          let up = await (ready ?? start());
+          if (!up) up = await start(); // One retry, e.g. after a killed container.
+          if (!up) {
+            return {
+              exitCode: null,
+              timedOut: false,
+              stdout: "",
+              stderr: "The solver container could not be started.",
+              truncated: false,
+              durationMs: Date.now() - started,
+            };
           }
-          const part = chunk.byteLength > room ? chunk.subarray(0, room) : chunk;
-          if (part.byteLength < chunk.byteLength) truncated = true;
-          chunks.push(part);
-          add(part.byteLength);
-        };
-        child.stdout.on(
-          "data",
-          collect(out, (n) => (outBytes += n)),
-        );
-        child.stderr.on(
-          "data",
-          collect(err, (n) => (errBytes += n)),
-        );
-        const kill = () => {
-          // Kill the container, not just the CLI; --rm then removes it.
-          spawn(docker, ["kill", name], { env: dockerClientEnv(), stdio: "ignore" }).on(
-            "error",
-            () => {},
+          const current = name;
+          let killed = false;
+          const result = await invoke(
+            dockerExecArgs(current, request.argv),
+            limit(request.timeoutMs),
+            request.signal,
+            () => {
+              // An exec'd process survives its CLI: kill the whole container.
+              killed = true;
+              void kill(current);
+            },
           );
-        };
-        const stop = () => {
-          kill();
-          setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
-        };
-        const timer = setTimeout(() => {
-          timedOut = true;
-          stop();
-        }, timeoutMs);
-        const onAbort = () => stop();
-        if (request.signal?.aborted) stop();
-        else request.signal?.addEventListener("abort", onAbort, { once: true });
-        let finished = false;
-        const finish = (exitCode: number | null) => {
-          if (finished) return;
-          finished = true;
-          clearTimeout(timer);
-          request.signal?.removeEventListener("abort", onAbort);
-          resolve({
-            exitCode,
-            timedOut,
-            stdout: sanitize(Buffer.concat(out).toString("utf8")),
-            stderr: sanitize(Buffer.concat(err).toString("utf8")),
-            truncated,
-            durationMs: Date.now() - started,
-          });
-        };
-        child.on("error", () => finish(null));
-        child.on("close", (code) => finish(code));
+          if (killed) ready = undefined; // The next command gets a fresh container.
+          return result;
+        },
+        async close() {
+          closed = true;
+          if (await ready?.catch(() => false)) await kill(name);
+        },
+      };
+    },
+
+    async cleanup() {
+      const ids = await runCli(docker, ["ps", "-aq", "--filter", `label=${CONTAINER_LABEL}`], {
+        timeoutMs: 30_000,
+        maxOutput: 64 * 1024,
+        stop: () => {},
       });
+      for (const id of ids.stdout.split("\n").filter((x) => /^[a-f0-9]{12,64}$/.test(x))) {
+        await kill(id);
+      }
     },
   };
+}
+
+/** Spawn the Docker CLI with bounded output, a timeout, and abort handling. */
+function runCli(
+  docker: string,
+  args: string[],
+  options: {
+    readonly timeoutMs: number;
+    readonly maxOutput: number;
+    readonly signal?: AbortSignal;
+    readonly stop: () => void;
+  },
+): Promise<RunResult> {
+  const started = Date.now();
+  return new Promise<RunResult>((resolve) => {
+    const child = spawn(docker, args, {
+      env: dockerClientEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    let outBytes = 0;
+    let errBytes = 0;
+    let truncated = false;
+    let timedOut = false;
+    const collect = (chunks: Buffer[], add: (n: number) => number) => (chunk: Buffer) => {
+      const room = options.maxOutput - add(0);
+      if (room <= 0) {
+        truncated = true;
+        return;
+      }
+      const part = chunk.byteLength > room ? chunk.subarray(0, room) : chunk;
+      if (part.byteLength < chunk.byteLength) truncated = true;
+      chunks.push(part);
+      add(part.byteLength);
+    };
+    child.stdout.on(
+      "data",
+      collect(out, (n) => (outBytes += n)),
+    );
+    child.stderr.on(
+      "data",
+      collect(err, (n) => (errBytes += n)),
+    );
+    const stop = () => {
+      options.stop();
+      setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stop();
+    }, options.timeoutMs);
+    const onAbort = () => stop();
+    if (options.signal?.aborted) stop();
+    else options.signal?.addEventListener("abort", onAbort, { once: true });
+    let finished = false;
+    const finish = (exitCode: number | null) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
+      resolve({
+        exitCode,
+        timedOut,
+        stdout: sanitize(Buffer.concat(out).toString("utf8")),
+        stderr: sanitize(Buffer.concat(err).toString("utf8")),
+        truncated,
+        durationMs: Date.now() - started,
+      });
+    };
+    child.on("error", () => finish(null));
+    child.on("close", (code) => finish(code));
+  });
 }
 
 /**

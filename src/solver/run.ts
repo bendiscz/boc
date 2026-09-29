@@ -24,7 +24,7 @@ import {
 } from "../state/run-state.ts";
 import { abortableSleep } from "../util/sleep.ts";
 import { createSolverAgent } from "./agent.ts";
-import { SOLVER_SYSTEM_PROMPT, taskPrompt } from "./prompt.ts";
+import { inputPreview, SOLVER_SYSTEM_PROMPT, taskPrompt } from "./prompt.ts";
 import { createSolverTools } from "./tools.ts";
 
 /**
@@ -343,10 +343,15 @@ async function runAttempt(
   });
   const attemptStart = Date.now();
   let timedOut = false;
+  // One warm container for the attempt (D030), started while the model thinks.
+  const session = options.executor.openSession?.(workspace.root);
+  const executor: Executor = session
+    ? { run: ({ workspace: _w, ...request }) => session.run(request) }
+    : options.executor;
   const tools = createSolverTools({
     ...(options.maxRunSeconds ? { maxRunTimeoutSeconds: options.maxRunSeconds } : {}),
     workspace,
-    executor: options.executor,
+    executor,
     onProposal: (answer) => log(`attempt ${attempt} proposed ${answer}`),
     refuse: (answer) => {
       const partState = store.state.puzzles[puzzle]?.parts[part];
@@ -389,6 +394,8 @@ async function runAttempt(
           ? { part1Answer: store.state.puzzles[puzzle]?.parts[1].solvedAnswer as string }
           : {}),
         copiedFiles: copied,
+        inputPreview: inputPreview(input),
+        carriedFiles: await carriedFileTexts(workspace, copied),
         ...(previousAttempt ? { previousAttempt } : {}),
       }),
     );
@@ -396,6 +403,7 @@ async function runAttempt(
     agentError = true;
   } finally {
     options.signal?.removeEventListener("abort", abort);
+    await session?.close().catch(() => {});
     // Private transcript beside (not inside) the container-visible workspace.
     await writeFileAtomic(
       join(attemptDir, "transcript.json"),
@@ -538,6 +546,26 @@ async function previousAttemptEnding(
  * Carry work forward: a retry starts from the previous attempt's files for the
  * same part; part 2's first attempt starts from the attempt that solved part 1.
  */
+/** Carried-over file contents shown in the prompt, saving a reading turn (D030). */
+const CARRIED_FILE_BYTES = 8_000;
+const CARRIED_TOTAL_BYTES = 16_000;
+
+async function carriedFileTexts(
+  workspace: Workspace,
+  paths: readonly string[],
+): Promise<{ path: string; text: string }[]> {
+  const files: { path: string; text: string }[] = [];
+  let total = 0;
+  for (const path of paths) {
+    const { text } = await workspace.read(path, 0, 10_000).catch(() => ({ text: "" }));
+    const bytes = Buffer.byteLength(text);
+    if (!text || bytes > CARRIED_FILE_BYTES || total + bytes > CARRIED_TOTAL_BYTES) continue;
+    files.push({ path, text });
+    total += bytes;
+  }
+  return files;
+}
+
 async function carryOverFiles(
   options: SolveOptions,
   part: PartNumber,

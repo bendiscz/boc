@@ -273,7 +273,14 @@ async function runEventWith(
     await client.prepare();
     const aoc = new AocService({ client, store, paths, year, now });
     const executor =
-      options.executor ?? createDockerExecutor({ image: config.sandbox?.image ?? "" });
+      options.executor ??
+      createDockerExecutor({
+        image: config.sandbox?.image ?? "",
+        // The executor's own cap must not undercut the configured run limit.
+        maxTimeoutMs: (config.sandbox?.maxRunSeconds ?? 60) * 1_000,
+      });
+    // Containers of a crashed run would otherwise keep their memory and CPU.
+    await executor.cleanup?.().catch(() => {});
     const results: DayResult[] = [];
 
     /** One alert per finished day: timing, attempts, credits; never answers. */
@@ -630,10 +637,17 @@ async function fetchWhenUnlocked(
 ): Promise<boolean> {
   if (store.state.puzzles[puzzle]?.parts[1].statementSha256) return true;
   for (const delay of [...UNLOCK_RETRY_DELAYS_MS, undefined]) {
+    // The input is fetched alongside the page, saving a round trip at release (D030).
+    // Its failure is ignored here: the attempt fetches it again if needed.
+    const input = store.state.puzzles[puzzle]?.inputSha256
+      ? undefined
+      : aoc.input(puzzle).catch(() => undefined);
     try {
       await aoc.statement(puzzle, 1);
+      await input;
       return true;
     } catch (error) {
+      await input;
       if (!(error instanceof AocError) || error.code !== "not-available") throw error;
       if (delay === undefined) return false;
       log(`${puzzle}: not unlocked yet; retrying in ${delay / 1000} s`);

@@ -84,15 +84,20 @@ export function createSolverTools(options: SolverToolsOptions): SolverTools {
   const run: AgentTool = {
     name: "run",
     label: "Run program",
-    description: `Run a command in an isolated offline container with the workspace mounted read-only at /work (the current directory). Available: python3 (uv, common libraries preinstalled), node, go, cargo/rustc. Writable scratch: /tmp (build output goes there; /work is read-only, so copy Cargo projects to /tmp before building, or use rustc -o /tmp/prog). No network: only preinstalled libraries are available. Use ["sh","-c","..."] for pipelines. Timeout up to ${maxSeconds}s. Example argv: ["python3","solve.py"].`,
+    description: `Run a command in an isolated offline container with the workspace mounted read-only at /work (the current directory). Available: python3 (uv, common libraries preinstalled), node, go, cargo/rustc. Writable scratch: /tmp (build output goes there; /work is read-only, so copy Cargo projects to /tmp before building, or use rustc -o /tmp/prog). No network: only preinstalled libraries are available. Use ["sh","-c","..."] for pipelines. Timeout up to ${maxSeconds}s. Example argv: ["python3","solve.py"]. Set proposeOnSuccess only for a program that checks the puzzle's examples itself (exiting non-zero on a mismatch) and prints exactly one line "ANSWER: <value>" for input.txt: if it exits with code 0, that value is proposed as with propose_answer, and your turn ends.`,
     parameters: Type.Object({
       argv: Type.Array(Type.String(), { minItems: 1, maxItems: 32 }),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: maxSeconds })),
+      proposeOnSuccess: Type.Optional(Type.Boolean()),
     }),
     executionMode: "sequential",
     execute: async (_id, params, signal) => {
       signal?.throwIfAborted();
-      const { argv, timeoutSeconds } = params as { argv: string[]; timeoutSeconds?: number };
+      const { argv, timeoutSeconds, proposeOnSuccess } = params as {
+        argv: string[];
+        timeoutSeconds?: number;
+        proposeOnSuccess?: boolean;
+      };
       const result = await options.executor.run({
         workspace: options.workspace.root,
         argv,
@@ -101,11 +106,35 @@ export function createSolverTools(options: SolverToolsOptions): SolverTools {
       });
       const status = result.timedOut ? "timed out" : `exit code ${result.exitCode ?? "unknown"}`;
       const note = result.truncated ? "\n[output truncated]" : "";
+      const output = `${status} after ${result.durationMs} ms\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}${note}`;
+      const details = { exitCode: result.exitCode, timedOut: result.timedOut };
+      if (!proposeOnSuccess) return { content: text(output), details };
+      // Proposing from the run saves the model a turn (D030); every check of
+      // propose_answer still applies, and anything doubtful is left to the model.
+      const answers = result.stdout
+        .split("\n")
+        .map((line) => /^ANSWER:\s*(.*?)\s*$/.exec(line)?.[1])
+        .filter((value) => value !== undefined);
+      const why =
+        result.exitCode !== 0 || result.timedOut
+          ? "the program did not exit with code 0"
+          : result.truncated
+            ? "the output was truncated"
+            : answers.length !== 1
+              ? `the program printed ${answers.length} ANSWER lines, not exactly one`
+              : proposal !== undefined
+                ? "an answer was already proposed"
+                : !isAnswer(answers[0] ?? "")
+                  ? "answers must be 1-200 printable characters without whitespace"
+                  : options.refuse?.(answers[0] ?? "");
+      if (why) return { content: text(`${output}\n[not proposed: ${why}]`), details };
+      const answer = answers[0] ?? "";
+      proposal = answer;
+      options.onProposal(answer);
       return {
-        content: text(
-          `${status} after ${result.durationMs} ms\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}${note}`,
-        ),
-        details: { exitCode: result.exitCode, timedOut: result.timedOut },
+        content: text(`${output}\n[proposed ${answer}]`),
+        details: { ...details, proposed: answer },
+        terminate: true,
       };
     },
   };

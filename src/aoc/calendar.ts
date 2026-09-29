@@ -29,7 +29,10 @@ export interface WaitOptions {
 
 /** Sleep (never poll the site) until the release time plus margin. */
 export async function waitForRelease(year: number, day: number, options: WaitOptions) {
-  await sleepUntil(releaseTime(year, day).getTime() + (options.marginMs ?? 3_000), options);
+  await sleepUntil(
+    releaseTime(year, day).getTime() + (options.marginMs ?? RELEASE_MARGIN_MS),
+    options,
+  );
 }
 
 /**
@@ -52,8 +55,17 @@ export async function sleepUntil(
 }
 
 /**
- * Delays between puzzle-page retries while a just-released puzzle still reports
- * "not available". Short at first to tolerate skew, then the 15-minute spacing
- * AoC asks for automated requests; bounded so a wrong clock cannot loop forever.
+ * The first puzzle request goes out this long after the release. The host clock
+ * is NTP-synchronized (RPI.md), so 1 s absorbs the remaining skew (D030; it was 3 s).
  */
-export const UNLOCK_RETRY_DELAYS_MS: readonly number[] = [15_000, 30_000, 60_000, 900_000];
+export const RELEASE_MARGIN_MS = 1_000;
+
+/**
+ * Delays between puzzle-page retries while a just-released puzzle still reports
+ * "not available". Very short at first, since a second of skew is the likely
+ * cause (D030), then the 15-minute spacing AoC asks for automated requests;
+ * bounded so a wrong clock cannot loop forever.
+ */
+export const UNLOCK_RETRY_DELAYS_MS: readonly number[] = [
+  1_000, 2_000, 5_000, 15_000, 30_000, 60_000, 900_000,
+];

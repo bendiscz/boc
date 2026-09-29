@@ -535,3 +535,82 @@ test("an adopted final-day part 1 can press the part 2 button without the input"
   assert.ok(!f.aocCalls.includes("input"), "no input download");
   assert.equal(f.prompts.length, 0);
 });
+
+test("the prompt shows an input preview and carried files; runs share one session (D030)", async (t) => {
+  const opened: string[] = [];
+  const runs: string[] = [];
+  let closed = 0;
+  const executor: Executor = {
+    run: async () => {
+      throw new Error("a session is used");
+    },
+    openSession: (workspace) => {
+      opened.push(workspace);
+      return {
+        run: async (request) => {
+          runs.push(request.argv.join(" "));
+          return {
+            exitCode: 0,
+            timedOut: false,
+            stdout: "ANSWER: 7\n",
+            stderr: "",
+            truncated: false,
+            durationMs: 1,
+          };
+        },
+        close: async () => {
+          closed++;
+        },
+      };
+    },
+  };
+  const runAndPropose = () =>
+    message({
+      content: [
+        {
+          type: "toolCall",
+          id: "w",
+          name: "write_file",
+          arguments: { path: "solve.py", content: "print(7)\n" },
+        },
+        {
+          type: "toolCall",
+          id: "r",
+          name: "run",
+          arguments: { argv: ["python3", "solve.py"], proposeOnSuccess: true },
+        },
+      ],
+      stopReason: "toolUse",
+    });
+  const f = await fixture(t, {
+    aoc: [
+      page(1, [], 1),
+      reply("That's the right answer!"),
+      page(2, ["7"], 2),
+      reply("That's the right answer!"),
+    ],
+    model: [runAndPropose, runAndPropose],
+    solve: { executor },
+  });
+  assert.deepEqual(await f.solve(), { part1: "solved", part2: "solved" });
+  assert.equal(f.prompts.length, 2, "one model turn per part");
+  assert.match(f.prompts[0] ?? "", /<input-preview>\\n3\\n4\\n<\/input-preview>/);
+  assert.match(f.prompts[1] ?? "", /<file path=\\"solve.py\\">\\nprint\(7\)\\n<\/file>/);
+  assert.equal(opened.length, 2);
+  assert.equal(closed, 2, "every session is closed");
+  assert.deepEqual(runs, ["python3 solve.py", "python3 solve.py"]);
+});
+
+test("input previews are bounded", async () => {
+  const { inputPreview } = await import("../src/solver/prompt.ts");
+  assert.equal(inputPreview("a\nb\n"), "a\nb");
+  const long = inputPreview(`${"x".repeat(5_000)}\n`);
+  assert.equal(long.length, 201, "one long line is cut to 200 characters");
+  assert.equal(
+    inputPreview(Array.from({ length: 50 }, (_, i) => `${i}`).join("\n")).split("\n").length,
+    10,
+  );
+  assert.ok(
+    inputPreview(Array.from({ length: 50 }, () => "y".repeat(300)).join("\n")).length <= 2_000,
+  );
+});

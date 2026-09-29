@@ -9,7 +9,14 @@ import { parseCredits } from "../src/budget/credits.ts";
 import { CreditLedger } from "../src/budget/ledger.ts";
 import { parseConfig } from "../src/config.ts";
 import { createGuardedStreams } from "../src/pi/guarded-streams.ts";
-import { dockerArgs, type Executor, type RunRequest, sanitize } from "../src/sandbox/executor.ts";
+import {
+  dockerArgs,
+  dockerExecArgs,
+  dockerSessionArgs,
+  type Executor,
+  type RunRequest,
+  sanitize,
+} from "../src/sandbox/executor.ts";
 import { MAX_FILE_BYTES, Workspace } from "../src/sandbox/workspace.ts";
 import { createSolverAgent } from "../src/solver/agent.ts";
 import { createSolverTools } from "../src/solver/tools.ts";
@@ -351,4 +358,88 @@ test("the run tool's timeout cap is configurable and defaults to 60 s", async (t
   assert.equal(withCap(240).sandbox?.maxRunSeconds, 240);
   assert.throws(() => withCap(541), "beyond the attempt deadline");
   assert.throws(() => withCap(0));
+});
+
+test("a run can propose its single ANSWER line when it exits cleanly (D030)", async (t) => {
+  const workspace = await Workspace.create(join(await tmp(t), "work"), []);
+  const reply = { exitCode: 0 as number | null, stdout: "" };
+  const executor: Executor = {
+    run: async () => ({
+      exitCode: reply.exitCode,
+      timedOut: false,
+      stdout: reply.stdout,
+      stderr: "",
+      truncated: false,
+      durationMs: 1,
+    }),
+  };
+  const make = () => {
+    const proposals: string[] = [];
+    const tools = createSolverTools({
+      workspace,
+      executor,
+      onProposal: (a) => proposals.push(a),
+      refuse: (a) => (a === "13" ? "This answer was already judged wrong." : undefined),
+    });
+    const run = tools.tools.find((tool) => tool.name === "run");
+    const call = async (propose?: boolean) => {
+      const result = await run?.execute("x", {
+        argv: ["python3", "solve.py"],
+        ...(propose !== undefined ? { proposeOnSuccess: propose } : {}),
+      });
+      return {
+        text: result?.content.map((c) => ("text" in c ? c.text : "")).join("") ?? "",
+        terminate: result?.terminate === true,
+      };
+    };
+    return { tools, proposals, call };
+  };
+  const text = (value: { text: string }) => value.text;
+
+  reply.stdout = "example ok\nANSWER: 42\n";
+  let f = make();
+  assert.equal((await f.call()).terminate, false, "never without the flag");
+  assert.deepEqual(f.proposals, []);
+  const proposed = await f.call(true);
+  assert.equal(proposed.terminate, true);
+  assert.match(text(proposed), /\[proposed 42\]/);
+  assert.deepEqual(f.proposals, ["42"]);
+  assert.equal(f.tools.proposed(), "42");
+  assert.match(text(await f.call(true)), /not proposed: an answer was already proposed/);
+
+  for (const [exitCode, stdout, why] of [
+    [1, "ANSWER: 42\n", /did not exit with code 0/],
+    [0, "ANSWER: 1\nANSWER: 2\n", /printed 2 ANSWER lines/],
+    [0, "no answer here\n", /printed 0 ANSWER lines/],
+    [0, "ANSWER: 4 2\n", /printable characters without whitespace/],
+    [0, "ANSWER: 13\n", /already judged wrong/],
+  ] as const) {
+    reply.exitCode = exitCode;
+    reply.stdout = stdout;
+    f = make();
+    const result = await f.call(true);
+    assert.equal(result.terminate, false, stdout);
+    assert.match(text(result), why);
+    assert.deepEqual(f.proposals, []);
+  }
+});
+
+test("the dockerized session keeps the executor's restrictions (D030)", () => {
+  const options = { image: `sha256:${"a".repeat(64)}` };
+  const single = dockerArgs(options, { workspace: "/w", argv: ["true"], timeoutMs: 1 }, "n");
+  const session = dockerSessionArgs(options, "/w", "n");
+  assert.deepEqual(session.slice(0, 3), ["run", "--detach", "--init"]);
+  assert.deepEqual(session.slice(-2), ["sleep", "infinity"]);
+  for (const flag of single.slice(1, -2)) assert.ok(session.includes(flag), flag);
+  assert.ok(session.includes("--label=boc.solver=1"));
+  assert.deepEqual(dockerExecArgs("n", ["python3", "s.py"]), [
+    "exec",
+    "--user=65534:65534",
+    "--workdir=/work",
+    "n",
+    "python3",
+    "s.py",
+  ]);
+  assert.throws(() => dockerExecArgs("n", []));
+  assert.throws(() => dockerExecArgs("n", ["bad\nline"]));
 });

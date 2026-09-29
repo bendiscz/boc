@@ -514,3 +514,31 @@ test("session checks have their own brake window and never delay puzzle requests
     "each window brakes only its own requests",
   );
 });
+
+test("page reads run concurrently, and answer submissions stay serialized (D030)", async (t) => {
+  let active = 0;
+  let peakReads = 0;
+  let peakAnswers = 0;
+  let answers = 0;
+  const impl = (async (url: string | URL) => {
+    const answer = String(url).endsWith("/answer");
+    active++;
+    if (answer) answers++;
+    peakReads = Math.max(peakReads, active);
+    peakAnswers = Math.max(peakAnswers, answers);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    active--;
+    if (answer) answers--;
+    return new Response('<html><div class="user">x</div></html>');
+  }) as typeof fetch;
+  const client = createAocClient({
+    cookieFile: await cookieFile(t),
+    contact: "ops@example.invalid",
+    version: "0",
+    fetch: impl,
+  });
+  await Promise.all([client.fetchPuzzle(2025, 1), client.fetchInput(2025, 1)]);
+  assert.equal(peakReads, 2, "the puzzle page and the input overlap");
+  await Promise.all([client.submitAnswer(2025, 1, 1, "1"), client.submitAnswer(2025, 1, 2, "2")]);
+  assert.equal(peakAnswers, 1, "never two submissions at once");
+});

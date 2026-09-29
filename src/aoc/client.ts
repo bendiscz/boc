@@ -8,7 +8,7 @@ import { open } from "node:fs/promises";
  * - Session cookie read from a private file (owner-only permissions required),
  *   kept in a closure, and never included in errors, logs, or return values.
  * - Identifiable User-Agent with operator contact (AoC automation guidance).
- * - Requests are serialized but not artificially spaced: fetching a new puzzle,
+ * - Requests are not artificially spaced (answers are serialized): fetching a new puzzle,
  *   its input, and answering is ordinary user behaviour (operator decision,
  *   D014). Needless traffic is prevented by callers (sleep-until-release, caching,
  *   server answer waits) plus a sliding-window cap here as a brake on bugs.
@@ -262,6 +262,9 @@ export function createAocClient(options: AocClientOptions): AocClient {
       }
       throw new AocError("http", "Unexpected AoC HTTP status.", status, true);
     };
+    // Page reads run concurrently (the puzzle and its input at release, D030);
+    // answer submissions stay serialized, after every earlier submission.
+    if (target.kind !== "answer") return run();
     const result = tail.then(run, run);
     tail = result.catch(() => {});
     return result;

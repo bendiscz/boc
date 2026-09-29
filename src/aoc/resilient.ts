@@ -1,5 +1,4 @@
 import { stat } from "node:fs/promises";
-import { UNLOCK_RETRY_DELAYS_MS } from "./calendar.ts";
 import { type AocClient, AocError } from "./client.ts";
 
 /**
@@ -16,7 +15,7 @@ import { type AocClient, AocError } from "./client.ts";
  * - Past the deadline, the original error is thrown.
  */
 
-export const AOC_READ_RETRY_DELAYS_MS = UNLOCK_RETRY_DELAYS_MS;
+export const AOC_READ_RETRY_DELAYS_MS: readonly number[] = [15_000, 30_000, 60_000, 900_000];
 export const SESSION_RECHECK_MS = 15 * 60_000;
 export const COOKIE_POLL_MS = 60_000;
 

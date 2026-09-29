@@ -92,6 +92,39 @@ require('node:dns').promises.lookup('adventofcode.com')
     "",
     "aborted container was removed",
   );
+  // Session (D030): one warm container per attempt, with the same restrictions.
+  const session = executor.openSession?.(ws.root);
+  assert.ok(session, "the Docker executor offers sessions");
+  const inSession = await session.run({ argv: ["node", "probe.js"], timeoutMs: 30_000 });
+  assert.equal(inSession.exitCode, 0, inSession.stderr);
+  assert.deepEqual(JSON.parse(inSession.stdout), JSON.parse(probe.stdout), "same restrictions");
+  const shared = await session.run({ argv: ["cat", "/tmp/scratch"], timeoutMs: 10_000 });
+  assert.equal(shared.stdout, "ok", "commands of one attempt share /tmp");
+  const warm = await session.run({ argv: ["true"], timeoutMs: 10_000 });
+  const spinning = await session.run({ argv: ["node", "spin.js"], timeoutMs: 2_000 });
+  assert.equal(spinning.timedOut, true);
+  const fresh = await session.run({
+    argv: ["sh", "-c", "test ! -e /tmp/scratch && echo fresh"],
+    timeoutMs: 30_000,
+  });
+  assert.equal(fresh.stdout.trim(), "fresh", "a timeout replaces the container");
+  await session.close();
+  await new Promise((r) => setTimeout(r, 1_000));
+  const afterClose = spawnSync("docker", ["ps", "-aq", "--filter", "label=boc.solver=1"], {
+    encoding: "utf8",
+  });
+  assert.equal(afterClose.stdout.trim(), "", "a closed session leaves no container");
+  const orphan = executor.openSession?.(ws.root);
+  await orphan?.run({ argv: ["true"], timeoutMs: 10_000 });
+  await executor.cleanup?.();
+  const afterCleanup = spawnSync("docker", ["ps", "-aq", "--filter", "label=boc.solver=1"], {
+    encoding: "utf8",
+  });
+  assert.equal(afterCleanup.stdout.trim(), "", "cleanup removes leftover containers");
+  console.log(
+    `Session passed: warm command ${warm.durationMs} ms (single run: ${probe.durationMs} ms).`,
+  );
+
   if (process.argv.includes("--toolchains")) {
     await ws.write(
       "s.py",
