@@ -244,3 +244,20 @@ On 2026-09-30 the operator decided that BoC, started weeks before the event (as 
 - **When:** during a wait for a pre-release check, whenever 24 hours have passed since the last check. There is no daily check within a day of T−30, and none during the event, where the gaps between checks are under a day.
 - **What:** the D022 readiness check. That is a forced OAuth refresh of every subscription (no model call; the rotated credential is persisted) and one authenticated AoC `/settings` read. It adds one AoC request per day of waiting, far below the 15-minute guidance for automated traffic.
 - **Reporting:** the log reads `daily check passed` or `daily check FAILED: …`. A failure sends an urgent alert and healthchecks `/fail`, and marks the subscription unavailable until a later check passes (D022, D024). A pass sends the success heartbeat, which healthchecks.io ignores outside its December schedule.
+
+## D030 — Faster solving: fewer model turns, concurrent reads, release timing, warm containers
+
+On 2026-09-30 the operator approved four speedups, after measurements showed that model turns take about 96% of an attempt (program runs 3–4%). The measurements came from 75 attempts of the 2024 and 2019 runs, typically 11–15 s over about 4 turns:
+
+1. **Fewer model turns.**
+   - The task prompt shows the start of `input.txt`: at most 10 lines of at most 200 characters each, and 2000 characters in total. It also shows the text of the files carried over from part 1 or an earlier attempt: at most 8 KB per file and 16 KB in total. Both are untrusted data inside neutralized delimiters. This removes the reading turn that 57 of 75 attempts spent on `input.txt`, and that every part-2 attempt spent on its part-1 files.
+   - `run` takes `proposeOnSuccess`. When the program exits with code 0, is not truncated, and prints exactly one `ANSWER: <value>` line, that value is proposed with every check of `propose_answer` (validity, known-wrong refusal, a single proposal), and the turn ends. Anything doubtful goes back to the model with the reason. The prompt allows this only for programs that check the puzzle's examples themselves and exit non-zero on a mismatch. This removes the copy-the-answer turn that ended 72 of 75 attempts.
+2. **Concurrent page reads.** The AoC client serializes only answer submissions. At release, the puzzle page and the input are requested together, saving one round trip, which can take seconds under release load.
+3. **Release timing.** The first request goes out 1 s after the release (it was 3 s): the host is NTP-synchronized. A puzzle that is not yet unlocked is retried after 1, 2, and 5 s, then 15 s, 30 s, 60 s, and 900 s (it was 15 s first). The retries of D025 for AoC errors are unchanged.
+4. **One warm container per attempt.**
+   - The session starts when the attempt starts, while the model's first turn runs, with the restrictions of D010 plus `--init`. Each command runs with `docker exec`: about 60 ms on the Pi against about 400 ms for a fresh container.
+   - Commands of one attempt share `/tmp`. A timeout or abort kills the container, and the next command starts a fresh one. The session is closed when the attempt ends.
+   - At start, BoC removes solver containers (label `boc.solver=1`) left by a crashed run.
+
+Also fixed: the Docker executor's own cap (120 s) would have undercut `sandbox.maxRunSeconds` above 120; the executor now takes the configured limit. Results are in EVALUATION.md.
+

@@ -1,6 +1,6 @@
 # Solver sandbox
 
-Generated code runs only through `src/sandbox/executor.ts` (D010). Each command starts a fresh container with these restrictions:
+Generated code runs only through `src/sandbox/executor.ts` (D010). The solver runs an attempt's commands in one warm session container (D030): it starts with the attempt, each command is a `docker exec`, and a timeout replaces it. A single command can also start a fresh container. Both have these restrictions:
 
 - `--network=none`, a read-only root filesystem, `--cap-drop=ALL`, `no-new-privileges`, UID/GID 65534, and `--ipc=none`.
 - Memory 2 GiB with no swap, 2 CPUs, and a limit of 256 PIDs.
@@ -43,7 +43,7 @@ The bundle is combined with the system bundle in `/tmp` for the PyPI step only, 
 
 ## Verification
 
-- `npm run test:executor -- <image-id>` is the opt-in probe of the production executor. It checks that the container runs non-root, with no host variables, a read-only `/work`, a writable `/tmp`, no external network interface, bounded output, and timeout and abort each killing and removing the container. With `--toolchains`, it also runs Python with numpy, scipy, sympy and networkx, decodes synthetic letter art with `advent_of_code_ocr`, `uv`, Node.js, Go, rustc, and Cargo (from a copy of the project in `/tmp`). It is not part of `npm test` or CI.
+- `npm run test:executor -- <image-id>` is the opt-in probe of the production executor. It checks, for a fresh container and for a session (D030: shared `/tmp`, a timeout replacing the container, no leftovers after `close` or `cleanup`), that the container runs non-root, with no host variables, a read-only `/work`, a writable `/tmp`, no external network interface, bounded output, and timeout and abort each killing and removing the container. With `--toolchains`, it also runs Python with numpy, scipy, sympy and networkx, decodes synthetic letter art with `advent_of_code_ocr`, `uv`, Node.js, Go, rustc, and Cargo (from a copy of the project in `/tmp`). It is not part of `npm test` or CI.
 - `npm run test:sandbox -- <image-id>` is the original isolation probe.
 - `npm run test:linux -- <image-id>` runs the executor probe (with `--toolchains`) against a native Linux Docker daemon from any Docker host. It starts a digest-pinned `docker:dind` container whose API is reachable only on an internal network, and loads the solver image into it; the image ID is unchanged. It then runs the probe as UID 1000 on an ext4 volume, under umask `022` and `077`, and removes everything afterwards. Docker Desktop's macOS file sharing hides Linux permission semantics; this probe does not.
 

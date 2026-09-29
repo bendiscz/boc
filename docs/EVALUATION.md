@@ -209,3 +209,21 @@ A replay on the Pi (`boc@boc.local`, while `boc.service` was stopped by the oper
 - **CPU speed:** the same pure-Python workload in the same solver image (`--cpus=2`) took 3.59 s on the Pi against 0.75 s on the Mac, so the Pi is about **4.8× slower** per core.
 - **Headroom against the 60-second run cap:** across all 397 program runs BoC has made on the Mac (every evaluation and benchmark storage), the 99th percentile was 3.3 s, and only one run exceeded 10 s. That was 12.3 s, by `gpt-6-luna`, which is not the solving model. At 4.8×, that run would take about 59 s on the Pi. Typical programs keep a large margin; a rare heavy one could hit the cap on the Pi where it would not on the Mac.
 
+## Faster solving (D030): Pi replay (2026-09-30)
+
+The same replay as the Pi benchmark above (2019 days 12, 16, 18, 20, 22, and 24; the event subscriptions; Copilot first), rerun after D030 in fresh storage `var/bench/pi-2019-fast`, with `boc.service` stopped by the operator.
+
+| | Before (`pi-2019`) | After (`pi-2019-fast`) |
+| --- | --- | --- |
+| Correct on the first submission | 12/12 | 12/12 |
+| Model turns per attempt (mean) | 4.17 | **2.25** |
+| Attempts that read `input.txt` | 11 of 12 | 0 |
+| Attempts proposed from a run | 0 | 12 of 12 |
+| Time per part, attempt start to verdict (median / total) | 13.8 s / 188 s | **12.0 s / 174 s** |
+| Copilot credits | 26.54 | 23.91 |
+
+- **Turns:** as intended, the reading and copying turns are gone. Most attempts are now `write_file`, then `run(proposeOnSuccess)`.
+- **Time:** the gain is only 8% in total (13% on the median). The remaining turns take longer, about 6.4 s against 3.8 s, because the program-writing turn now also writes the checks against the examples. Each part is a single sample, and per-part times vary by run (day 18 part 1 took 26 s before and 37 s after). The warm container and the concurrent release reads are not visible in a replay, which reads from the cache.
+- **Credits:** about 10% fewer, because there are fewer turns that resend the context.
+- **Conclusion:** accuracy was unchanged, and time and credits were modestly lower. Almost all of the remaining time is the model's own generation, so further gains would have to come from the model side (for example its reasoning setting), measured the same way.
+
