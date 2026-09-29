@@ -39,6 +39,8 @@ This development host sits behind a TLS-intercepting corporate proxy:
 - Docker builds need the operator's CA bundle as a BuildKit secret (`--secret id=extra_ca,src=/Users/benda/Work/ts/pki/ts_bundle.pem`; see `docs/SANDBOX.md`). Never copy the bundle into the repository or an image layer.
 - Live Node.js requests need `NODE_EXTRA_CA_CERTS` set to the same bundle.
 
+**The live host is now the Raspberry Pi `boc@boc.local` (D027, `docs/RPI.md`), which owns the credentials.** On this development Mac, `.secrets/` was renamed to `.secrets-moved-to-pi/` (ignored). Do not use it, and run live BoC commands only on the Pi (over SSH), never on both machines.
+
 Private runtime files exist only locally and are ignored by Git:
 
 - `.secrets/aoc-session`, `.secrets/copilot.json`, `.secrets/codex.json`, `.secrets/ntfy-topic-url`, and `.secrets/healthchecks-ping-url`. Never read, print, or copy their contents.
