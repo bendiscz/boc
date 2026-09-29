@@ -200,3 +200,12 @@ A supervised live run by the agent with the operator's go-ahead: `boc run --days
 - **Codex replay** (`var/bench/ocr-2019a`, source `eval-2019`): day 8 part 2 was solved on the first submission, using `convert_6` (1.23843 Codex credits for the day).
   - Day 11 could not be replayed, because the replay's leak guard refuses a cached part 1 page that shows its answer. Codex on day 11 therefore remains untested.
 
+## Raspberry Pi 5 replay benchmark (2026-09-30)
+
+A replay on the Pi (`boc@boc.local`, while `boc.service` was stopped by the operator), with the operator's go-ahead. It used the event subscriptions (Copilot first), config `var/bench-pi-2019.config.json`, and the source `var/bench/eval-2019`, copied from the Mac. The days were 2019 days 12, 16, 18, 20, 22, and 24, among the more compute-heavy on the Mac.
+
+- **Correctness:** 12 of 12 parts correct, each on its first attempt and first submission. Copilot 26.54 credits; Codex 0. Wall time 3 min 11 s, and 8–31 s per part from attempt start to verdict.
+- **Program runs:** no run timed out. The longest program took 4.9 s (day 16 part 2), and a trivial run took 0.4–1.1 s including container start-up (0.1–0.2 s on the Mac).
+- **CPU speed:** the same pure-Python workload in the same solver image (`--cpus=2`) took 3.59 s on the Pi against 0.75 s on the Mac, so the Pi is about **4.8× slower** per core.
+- **Headroom against the 60-second run cap:** across all 397 program runs BoC has made on the Mac (every evaluation and benchmark storage), the 99th percentile was 3.3 s, and only one run exceeded 10 s. That was 12.3 s, by `gpt-6-luna`, which is not the solving model. At 4.8×, that run would take about 59 s on the Pi. Typical programs keep a large margin; a rare heavy one could hit the cap on the Pi where it would not on the Mac.
+

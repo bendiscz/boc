@@ -22,6 +22,8 @@ Files in `deploy/rpi/`:
   - A 3 GiB allocation under the 2 GiB limit was killed (exit 137).
   - A manual `boc run` of the event config passed the start check (both credentials refreshed, AoC session read). SIGTERM stopped it cleanly.
   - This smoke test found the >24.8-day timer bug, fixed in `ec5b3b5`.
+  - Restart drills under systemd, 2026-09-30: `kill -9`, an outside SIGTERM, `sudo systemctl stop` (no restart), and `sudo reboot` all passed.
+  - Replay benchmark: 12/12 parts on the first submission. The Pi is about 4.8× slower per core than the development Mac, and no program came near the 60-second run cap (EVALUATION.md).
 
 ## Hardware
 

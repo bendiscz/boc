@@ -46,6 +46,7 @@
     | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78 (the held 26.09 was settled at 0); Codex 1.04 |
     | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46; Codex 0.88 + 2.02 (the held 13.00 was settled at 0) |
     | `eval-2019` | AoC 2019, all days: 48/50 (EVALUATION.md) | Copilot 105.63; Codex 3.02 |
+    | `bench-pi-2019` (on the Pi) | Pi replay benchmark, 6 days of 2019 | Copilot 26.54; Codex 0 |
     | `eval-2019b` | 2019 days 11 and 25 after D028: complete | Copilot 2.12; Codex 0 |
     | `bench-ocr-2019a`, `bench-ocr-2019b` | Codex replay of the letter-art parts | Codex 1.23843; 0 |
     | `finish-2024` | AoC 2024 days 2 and 4–12, all first-submission correct | Copilot 24.74; Codex 0 |
@@ -61,8 +62,12 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGEN
 
 Next concrete task: **finish the Raspberry Pi host (D027, [RPI.md](RPI.md)).** `boc@boc.local` is set up and passes every check (RPI.md, "Verification status"). **The Pi owns the credentials:** the Mac's copy was renamed to `.secrets-moved-to-pi/` (ignored), so live BoC commands now run on the Pi only (D022). Remaining:
 
-- **The operator (sudo):** `boc.service` is enabled. The crash (`kill -9`) and outside-SIGTERM restart drills passed (2026-09-30). Still to drill, needing sudo: `sudo systemctl stop boc` (a clean stop with no restart) and `sudo reboot` (the service comes back after time sync). Before 1 December, move the system from the SD card to an SSD: re-flash or clone, then rerun `setup.sh` and the push scripts, or copy `~boc/boc` including `var/`.
-- **With the operator's go-ahead:** a short replay benchmark on the Pi for the 60-second run timeout. The replay's source storage must be copied to the Pi first.
+- **Done (2026-09-30):**
+  - Every systemd drill passed: `kill -9`, an outside SIGTERM, `systemctl stop`, and a reboot.
+  - Daily checks (D029).
+  - A Pi replay benchmark: 12/12; the Pi is 4.8× slower per core than the Mac, and no run came near the 60-second cap (EVALUATION.md).
+- **Open decision:** raise the solver's 60-second run cap on the Pi to keep the Mac's headroom, for example to 240 s. That is still inside the 10-minute attempt deadline. Today the cap is a code default (`maxRunTimeoutSeconds`), not a config setting.
+- **The operator:** move the system from the SD card to an SSD before 1 December.
 - **Afterwards:** the end-to-end rehearsal (milestone 7).
 
 The open findings of the live AoC drills were decided and implemented on 2026-09-29 (D026).
@@ -466,4 +471,6 @@ systemd restart drills and daily checks (2026-09-30):
   - `kill -9` of BoC: systemd restarted it after 60 s, the new run removed both stale locks, and the start check passed.
   - `kill -TERM` from outside systemd: a clean stop with exit 130 and no locks left, then a restart after 60 s and a passing start check.
 - D029: daily readiness checks during long waits. `npm run check`: 186 offline tests passed. The new test covers two daily checks, a rejected credential found by one of them (urgent alert, `/fail`), and recovery at T−30.
+
+Pi replay benchmark (live, 2026-09-30, with the operator's go-ahead; the service was stopped for it): 2019 days 12, 16, 18, 20, 22, and 24, 12/12 first-submission correct, Copilot 26.54. The Pi is 4.8× slower per core. EVALUATION.md has the run-time headroom analysis.
 
