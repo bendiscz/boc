@@ -87,3 +87,32 @@ A supervised live evaluation of harder, later days, run by the agent with the op
   - The retry prompt now says why the previous attempt failed.
 - **A killed run left a run-state lock that no command could clear.** `boc ledger break-lock` now clears both the ledger and the run-state lock of a dead local process.
 - **Re-proposing a rejected answer wasted an attempt.** Found with luna and seen again in the rerun. Fixed: `propose_answer` refuses an answer already judged wrong, or one that contradicts a too-high or too-low bound, and returns the reason to the model as a tool error. The attempt continues, and the refusal is logged.
+
+## Live failure drills (2026-09-29)
+
+Supervised, agent-run with the operator's go-ahead. The drills used `boc replay` on AoC 2025 days already solved (sources: the two calibration configs), so AoC was never contacted, but the provider calls were real. Each drill used its own private storage: `var/bench/drill-2025`, `drill-2025-quota`, and `drill-2025-cred`. Logs are in `var/drill/`.
+
+| # | Drill | Method | Result |
+| --- | --- | --- | --- |
+| 1 | Providers unreachable at start | Run without the corporate CA, so every TLS connection fails on the client | Both start checks failed, no model call was made, and the day ended `no-subscription`. 0 credits. **Defect A.** |
+| 2 | Provider outage mid-solve | A local CONNECT proxy (`NODE_USE_ENV_PROXY`) toggled to refuse with 503 about 4 s into attempt 1 | Attempts 1–4 all failed within 120 ms, and the part **gave up permanently**. There was no failover to Codex and no backoff. The failed calls settled at 0. **Defect B.** |
+| 3 | Process death | `kill -9` during attempt 1's model call, then a rerun | The rerun refused with `Credit ledger: Locked by another process.` After `ledger break-lock` it resumed: attempt 1 was recorded as interrupted, its call was held as an orphaned reservation (13.02, charge unknown), and day 6 was solved with one submission per part. **Defect D.** |
+| 4 | Quota exhaustion mid-attempt | Copilot per-puzzle limit 15 (one call reserves about 13) | A later reservation was denied, and the part **gave up permanently** (`budget-exhausted`) although Codex had its full 100. **Defect C.** |
+| 5 | Rejected credential | Copilot pointed at a synthetic credential with fake tokens (the real files were untouched) | The start check failed, Copilot was skipped, and Codex solved day 8 on the first submission. Passed, but the message is identical to drill 1's network failure (Defect A). |
+
+Credits: Copilot 5.21 spent (4.44 + 0.78), plus 26.09 held in `drill-2025`; Codex 1.04 spent. The held amount is two unknown-charge reservations:
+- 13.02 from drill 3's killed call; its true charge is unknown;
+- 13.07 from an aborted call in the first attempt at drill 2. That call never reached the provider (the proxy log shows no tunnel after the outage began), so its true charge is 0. The operator may settle it.
+
+Duplicate submissions and an expired AoC session were not drilled live, because replay never contacts AoC; both are covered offline in `test/drills.test.ts`.
+
+### Drill-method artifact (not a BoC defect)
+
+The first try at drill 2 made the proxy drop refused tunnels without replying. Node 24's built-in environment proxy support (`NODE_USE_ENV_PROXY`, undici) then retried CONNECT in a tight loop, about 300,000 connections in a minute inside one `fetch`. It continued after the request was aborted, and it reproduces with a bare `fetch`. Replying `503` fails fast with one connection, so the drill proxy now does that. BoC uses no proxy in production. Do not rely on `NODE_USE_ENV_PROXY` for the event.
+
+### Defects found
+
+- **A. A failed readiness check cannot tell an outage from a rejected credential, and it lasts too long.** A TLS or network failure logs `token refresh failed; run boc login`, the same message as a revoked token. Either way the subscription is skipped until a later check passes, and in event mode that check is the next day's T−30. So a short network blip during the start check or the T−5 recheck makes the release run with no subscription, even if the network recovers a minute later.
+- **B. A provider outage during a solve burns every attempt within milliseconds.** Network errors and 5xx responses are neither a usage limit nor a rejected credential, so each attempt ends as `failed`, counts toward the cap of 4, and the next one starts at once. The part then gives up permanently, with no failover and no retry later.
+- **C. Credit exhaustion mid-attempt gives up the part instead of failing over.** Only the start of an attempt checks whether a subscription can afford it (`minimumAttemptCredits`). A denial inside an attempt ends the part as `gave-up (budget-exhausted)`, even when another subscription on a separate pool has credits.
+- **D. A crash leaves a lock that blocks a restart.** The message does not say that the holder is dead or suggest `boc ledger break-lock`. With systemd `Restart=on-failure` on an unattended host, BoC would refuse to start until the operator intervenes.

@@ -42,6 +42,7 @@
     | `bench-luna-2025`, `bench-luna-2024`, `bench-luna-2024b` | luna replays | 1.14, 3.41, 0.51 |
     | `bench-sol-2025`, `bench-sol-2025b`, `bench-sol-2024` | sol replays | 7.96, 5.00, 22.88; `bench-sol-2024` also holds 3.39 by the operator's decision |
     | `smoke-2025` | combined-config smoke test | 2.04 |
+    | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78, and 26.09 held (two unknown-charge reservations, EVALUATION.md); Codex 1.04 |
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
@@ -51,10 +52,14 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **to be decided with the operator.** The event config exists (`var/event-2026.config.json`). Candidates:
+Next concrete task: **fix the four defects found by the live failure drills (2026-09-29, EVALUATION.md, "Live failure drills")**, after the operator confirms the proposed behaviour:
 
-- an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
-- live failure drills via replay (milestone 7).
+- **A.** Classify credential-check failures: a network, TLS, timeout, or 5xx failure is `unreachable`; only 401/403 is `rejected`. An unreachable subscription is rechecked with bounded backoff (for example every 1–2 minutes) rather than skipped until the next day's check. Log messages must tell the two apart.
+- **B.** Treat transport and 5xx provider errors as a third refusal kind, `outage`. The attempt is not counted, and the part fails over to the next subscription. If every subscription is out, wait with capped backoff and retry, up to an operator-chosen bound, rather than give up.
+- **C.** A credit denial inside an attempt excludes that subscription for the part and fails over. The part gives up only when no subscription can afford an attempt.
+- **D.** At start, remove a stale lock automatically when its holder PID does not exist on this host, and log it. Otherwise the error names the holder and suggests `boc ledger break-lock`.
+
+After the fixes: add offline regression tests, rerun drills 1–4 live (with the operator's go-ahead), and record the results. Later candidates: an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU.
 
 Operator decision (2026-09-28): the 3.39-credit reservation held in `var/bench/sol-2024` stays held. The Codex dashboard is too aggregated to read one call's charge, and the reservation counts only against that bench config. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
@@ -117,7 +122,7 @@ Live runs (provider calls, AoC requests, submissions) spend real credits: start 
 ### 7. AoC 2026 readiness
 
 - [ ] Recheck site rules, event calendar, provider policy, models, and credit semantics.
-- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills done in `test/drills.test.ts`; live drills are pending.)
+- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29 and found defects A–D (EVALUATION.md); fix them and rerun the drills.)
 - [x] Document installation, credential setup, budget configuration, private data handling, operation, and recovery. (`OPERATOR.md`)
 - [ ] Run an end-to-end rehearsal and obtain any remaining operator-side setup.
 
@@ -383,3 +388,10 @@ Test hermeticity fix (2026-09-28):
 
 - Once the operator created `.secrets/ntfy-topic-url` and `.secrets/healthchecks-ping-url`, the example config's `../.secrets/` paths resolved to the real alert destinations. Three CLI tests ran `boc run` on the example in place. The "no eligible provider" test therefore likely sent a real urgent ntfy push and a healthchecks `/fail` ping on each full test run after the operator's alert test, and the aborted-run test a low-priority push. It also failed locally, although it passed in CI, where the files do not exist.
 - Fixed: `hermeticExample()` in `test/cli.test.ts` redirects every secret path and the storage into an empty temp directory and asserts that no `.secrets` path remains. Rule for new tests: never run a command against a config whose secret paths can resolve to real files. `npm run check`: 166 offline tests passed.
+
+Live failure drills (live, 2026-09-29, agent-run with the operator's go-ahead):
+
+- Five drills via `boc replay` on AoC 2025 days 1, 2, 5, 6, 7, and 8; no AoC contact. New private configs: `var/drill-2025*.config.json`. Drill tooling and logs: `var/drill/` (the toggleable CONNECT proxy `proxy.mjs`, and a synthetic bogus Copilot credential in `var/drill/secrets/`).
+- Passed: process death and resume (after a manual `break-lock`), and a rejected credential with failover at the start check.
+- Found defects A–D (EVALUATION.md). Also found a drill-method artifact: Node's `NODE_USE_ENV_PROXY` loops on dropped CONNECT tunnels.
+- No code changes; `npm run check`: 166 offline tests passed before the drills.
