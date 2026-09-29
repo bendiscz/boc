@@ -53,27 +53,18 @@
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
-- **Checks.** `npm run check`: 182 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 185 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **set up the Raspberry Pi host (D027, [RPI.md](RPI.md)).**
+Next concrete task: **finish the Raspberry Pi host (D027, [RPI.md](RPI.md)).** `boc@boc.local` is set up and passes every check (RPI.md, "Verification status"). **The Pi owns the credentials:** the Mac's copy was renamed to `.secrets-moved-to-pi/` (ignored), so live BoC commands now run on the Pi only (D022). Remaining:
 
-- **The operator's part:**
-  - the hardware (SSD, active cooler, Ethernet);
-  - flashing Raspberry Pi OS Lite (64-bit) with an SSH key;
-  - `sudo sh deploy/rpi/setup.sh`;
-  - `deploy/rpi/push-image.sh` and `push-private.sh` from the development machine.
-- **The agent's part, once SSH access is given:**
-  - `check.sh --probe` (the bare-metal Linux executor run);
-  - fixing any memory-cgroup or 16K-page problem;
-  - a short replay benchmark on the Pi to check the 60-second run timeout (with the go-ahead);
-  - enabling `boc.service`, and a restart drill under systemd.
-- Push the **new** solver image (D028) to the Pi with `push-image.sh`.
-- **Afterwards:** the end-to-end rehearsal (milestone 7). AoC 2024 days 1–24 are solved on the account; day 25 part 2 (the button) is pending.
-- **Once the credentials move to the Pi,** stop running live BoC commands on the development Mac with them (D022).
+- **The operator (sudo):** `sudo systemctl enable --now boc`, and later a restart drill under systemd. Before 1 December, move the system from the SD card to an SSD: re-flash or clone, then rerun `setup.sh` and the push scripts, or copy `~boc/boc` including `var/`.
+- **With the operator's go-ahead:** a short replay benchmark on the Pi for the 60-second run timeout. The replay's source storage must be copied to the Pi first.
+- **Proposed, not decided:** a daily credential check while BoC waits for the event. Today the first check after start comes at T−30 on 1 December, about 62 days of idle refresh tokens.
+- **Afterwards:** the end-to-end rehearsal (milestone 7).
 
 The open findings of the live AoC drills were decided and implemented on 2026-09-29 (D026).
 
@@ -462,4 +453,11 @@ Letter-art decoding (D028, 2026-09-29):
 - Prompt guidance and the hash-pinned `advent-of-code-ocr` library; the image was rebuilt and every private config updated.
 - Fixed pressing the final-day button after an adopted part 1 (no input), with a regression test. `npm run check`: 182 offline tests passed.
 - Live, with the operator's go-ahead: 2019 day 11 part 2 and the day 25 button. AoC 2019 is complete. A Codex replay of day 8 part 2 used `convert_6` (EVALUATION.md).
+
+Raspberry Pi setup (live, 2026-09-29):
+
+- The operator ran `setup.sh` on `boc.local`. The agent then pushed the image and the private files, and ran `check.sh`, the probe, a memory-limit test, and a start-check smoke test (no model calls; one AoC read per run). Results are in RPI.md.
+- **Defect I:** the smoke test showed `TimeoutOverflowWarning`. A wait longer than 2^31-1 ms (about 24.8 days, here about 62 days to the 2026 pre-release check) fired after 1 ms. BoC would have fetched unreleased puzzles and ended with exit 0, which systemd does not restart. It was stopped before any puzzle request.
+  - Fixed: the pre-release waits use `sleepUntil` (wall-clock steps of at most 60 s), and `abortableSleep` splits long delays. Regression tests were added.
+  - `npm run check`: 185 offline tests passed. The smoke test was rerun on the Pi: it kept waiting and stopped cleanly on SIGTERM.
 

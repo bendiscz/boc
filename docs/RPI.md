@@ -12,7 +12,16 @@ Files in `deploy/rpi/`:
 | `push-image.sh` | development machine | Copies the tested solver image to the Pi, keeping its ID |
 | `push-private.sh` | development machine | Moves `.secrets/` and the event config to the Pi |
 
-**Verification status:** `setup.sh` ran end to end in a Debian trixie arm64 container, with only the host-level `systemctl`, `timedatectl`, and `ufw` calls stubbed. `boc.service` passes `systemd-analyze verify`, and all scripts pass shellcheck. None of this has run on a real Pi yet; the items marked ⚠ below are checked there.
+**Verification status.**
+- Before any hardware: `setup.sh` ran end to end in a Debian trixie arm64 container, with only the host-level `systemctl`, `timedatectl`, and `ufw` calls stubbed. `boc.service` passes `systemd-analyze verify`, and all scripts pass shellcheck.
+- **On the operator's Pi 5 (8 GB), 2026-09-29:** Raspberry Pi OS Lite trixie, kernel 6.18 `rpi-2712`, running from the SD card and on Ethernet.
+  - The operator ran `setup.sh`. As expected (⚠ below), the stock kernel command line contained `cgroup_disable=memory`. The script appended `cgroup_enable=memory`, and after a reboot the memory controller was active.
+  - `push-image.sh` took 79 s for 2.3 GB, and the image ID was unchanged.
+  - `check.sh`: every check passed (the notes: 16K pages, SD card).
+  - The executor probe with every toolchain passed on 16K pages in 20 s, so the 4K kernel is not needed.
+  - A 3 GiB allocation under the 2 GiB limit was killed (exit 137).
+  - A manual `boc run` of the event config passed the start check (both credentials refreshed, AoC session read). SIGTERM stopped it cleanly.
+  - This smoke test found the >24.8-day timer bug, fixed in `ec5b3b5`.
 
 ## Hardware
 
