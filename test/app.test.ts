@@ -197,12 +197,13 @@ test("live mode sleeps until release before the first request, then stops after 
   const results = await f.run();
   assert.equal(results[0]?.part2, "solved");
   assert.ok(f.aocCalls[0]?.endsWith("@2025-12-01T05:00:03.000Z"), f.aocCalls[0]);
-  assert.equal(f.sleeps[0], 1_800_000, "first to the pre-release check, 30 min before");
-  assert.equal(
-    f.sleeps.slice(0, 31).reduce((a, b) => a + b, 0),
-    3_600_000,
-    "then on to the release",
+  const sum = (n: number) => f.sleeps.slice(0, n).reduce((a, b) => a + b, 0);
+  assert.ok(
+    f.sleeps.slice(0, 61).every((ms) => ms <= 60_000),
+    "wall-clock steps of at most 60 s until the release",
   );
+  assert.equal(sum(30), 1_800_000, "first to the pre-release check, 30 min before");
+  assert.equal(sum(61), 3_603_000, "then on to the release plus its margin");
   assert.equal(results.at(-1)?.part1, "not-released");
   assert.equal(results.length, 2, "default mode stops at the first unavailable day");
   const dir = join(f.root, "var/ledger/2025");
@@ -683,4 +684,14 @@ test("a stale lock from a dead process or an earlier boot is removed at start", 
     f.run({ days: [2] }),
     /Locked by another process \(PID \d+\)\. If no BoC process is running, run boc ledger break-lock/,
   );
+});
+
+test("a wait of months before the event sleeps in short steps, never past the release", async (t) => {
+  // Regression (2026-09-29, on the Pi): one timer for ~62 days fired after 1 ms.
+  const f = await setup(t, "2025-09-29T20:50:00.000Z");
+  f.released.add(1);
+  const results = await f.run({ days: [1] });
+  assert.equal(results[0]?.part2, "solved");
+  assert.ok(f.sleeps.length > 80_000 && f.sleeps.every((ms) => ms <= 60_000));
+  assert.ok(f.aocCalls[0]?.endsWith("@2025-12-01T05:00:03.000Z"), f.aocCalls[0]);
 });

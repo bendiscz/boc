@@ -29,7 +29,19 @@ export interface WaitOptions {
 
 /** Sleep (never poll the site) until the release time plus margin. */
 export async function waitForRelease(year: number, day: number, options: WaitOptions) {
-  const target = releaseTime(year, day).getTime() + (options.marginMs ?? 3_000);
+  await sleepUntil(releaseTime(year, day).getTime() + (options.marginMs ?? 3_000), options);
+}
+
+/**
+ * Sleep until a wall-clock time (epoch ms) in steps of at most `maxSleepMs`
+ * (default 60 s), rechecking the clock after each. A single long timer would be
+ * wrong twice over: Node fires any delay above 2^31-1 ms (about 24.8 days) after
+ * 1 ms, and a timer does not follow host suspend or clock corrections.
+ */
+export async function sleepUntil(
+  target: number,
+  options: Omit<WaitOptions, "marginMs">,
+): Promise<void> {
   const maxSleep = options.maxSleepMs ?? 60_000;
   for (;;) {
     options.signal?.throwIfAborted();

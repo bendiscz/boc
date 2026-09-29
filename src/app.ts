@@ -1,6 +1,12 @@
 import { appendFile } from "node:fs/promises";
 import { type Alert, createNotifier, type Notifier } from "./alerts/notifier.ts";
-import { isReleased, releaseTime, UNLOCK_RETRY_DELAYS_MS, waitForRelease } from "./aoc/calendar.ts";
+import {
+  isReleased,
+  releaseTime,
+  sleepUntil,
+  UNLOCK_RETRY_DELAYS_MS,
+  waitForRelease,
+} from "./aoc/calendar.ts";
 import { type AocClient, AocError, createAocClient, DEFAULT_RATE_CAP } from "./aoc/client.ts";
 import { resilientAocClient } from "./aoc/resilient.ts";
 import { AocService } from "./aoc/service.ts";
@@ -404,10 +410,15 @@ async function runEventWith(
         const release = releaseTime(year, day).getTime();
         if (now().getTime() < release - PRE_RELEASE_CHECK_MS) {
           log(`${puzzle}: waiting for the pre-release check`);
-          await sleep(release - PRE_RELEASE_CHECK_MS - now().getTime(), options.signal);
+          const clockWait = {
+            now: () => now().getTime(),
+            sleep,
+            ...(options.signal ? { signal: options.signal } : {}),
+          };
+          await sleepUntil(release - PRE_RELEASE_CHECK_MS, clockWait);
           const ok = await checkReadiness(`${puzzle} pre-release`);
           if (!ok && now().getTime() < release - PRE_RELEASE_RECHECK_MS) {
-            await sleep(release - PRE_RELEASE_RECHECK_MS - now().getTime(), options.signal);
+            await sleepUntil(release - PRE_RELEASE_RECHECK_MS, clockWait);
             await checkReadiness(`${puzzle} final pre-release`);
           }
         }
