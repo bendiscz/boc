@@ -305,7 +305,8 @@ export function transition(state: RunState, record: RunRecord): RunState {
       break;
     case "attempt-started":
       if (before.status !== "ready") deny("part not ready");
-      if (!current.inputSha256) deny("input missing");
+      // The final-day button needs no input (an adopted part 1 never fetched it).
+      if (!current.inputSha256 && record.subscription !== "orchestrator") deny("input missing");
       if (record.attempt !== before.attempts + 1) deny("attempt out of sequence");
       next.status = "solving";
       next.attempts = record.attempt;

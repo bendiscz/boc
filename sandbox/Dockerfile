@@ -3,8 +3,9 @@
 # at solve time: containers run with --network=none.
 #
 # Integrity: the base is pinned by digest; Debian packages are verified by apt's
-# signed repositories; uv is installed from PyPI only if its wheel matches a hash in
-# uv-requirements.txt (pip --require-hashes; see docs/SANDBOX.md).
+# signed repositories; uv and the libraries in python-requirements.txt are installed
+# from PyPI only if their wheels match the pinned hashes (pip --require-hashes; see
+# docs/SANDBOX.md).
 ARG BASE=node:24-trixie-slim@sha256:ebada56d5c601bd80f2af1cc3d101b1b730027d2395ab6d15402a2a5a83e4b51
 FROM ${BASE}
 
@@ -14,6 +15,7 @@ FROM ${BASE}
 # stored in any image layer.
 RUN --mount=type=secret,id=extra_ca,required=false \
     --mount=type=bind,source=uv-requirements.txt,target=/tmp/boc-uv-requirements.txt \
+    --mount=type=bind,source=python-requirements.txt,target=/tmp/boc-python-requirements.txt \
     set -eu; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -27,7 +29,8 @@ RUN --mount=type=secret,id=extra_ca,required=false \
     fi; \
     PIP_CERT="$CA" SSL_CERT_FILE="$CA" \
       python3 -m pip install --no-cache-dir --break-system-packages \
-        --require-hashes --only-binary=:all: --no-deps -r /tmp/boc-uv-requirements.txt; \
+        --require-hashes --only-binary=:all: --no-deps \
+        -r /tmp/boc-uv-requirements.txt -r /tmp/boc-python-requirements.txt; \
     rm -f /tmp/boc-build-ca.pem; \
     apt-get purge -y python3-pip; \
     apt-get autoremove -y; \

@@ -189,3 +189,14 @@ A supervised live run by the agent with the operator's go-ahead: `boc run --days
     - (b) A general-purpose OCR library for this font, preinstalled in the solver image. This counts as a freely available library, not a puzzle solution (D004, D010).
     - (c) Refuse, within an attempt, a new reading that differs from a rejected one in only one or two characters.
 
+### Fix and rerun (D028, 2026-09-29)
+
+- **The fix:** remedies (a) and (b): prompt guidance plus the preinstalled `advent_of_code_ocr` library. The solver image was rebuilt as `sha256:7e4e65ecaffd…`.
+- **Fresh storage `var/bench/eval-2019b`, days 11 and 25:**
+  - Day 11 part 1 and day 25 part 1 were adopted from the page.
+  - **Day 11 part 2 was solved on the first attempt and first submission** (Copilot, 2.12 credits). The program decoded the letters with `convert_6`.
+  - The day 25 button then failed with `Invalid run-state transition: input missing`: an adopted part 1 never downloads the input, but the model-free button attempt required it. This is fixed (the orchestrator's button attempt no longer needs an input), with a regression test. The rerun pressed the button: `uncertain`, then reconciled as correct.
+  - **AoC 2019 is complete on the account (50 stars).**
+- **Codex replay** (`var/bench/ocr-2019a`, source `eval-2019`): day 8 part 2 was solved on the first submission, using `convert_6` (1.23843 Codex credits for the day).
+  - Day 11 could not be replayed, because the replay's leak guard refuses a cached part 1 page that shows its answer. Codex on day 11 therefore remains untested.
+

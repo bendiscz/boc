@@ -21,7 +21,7 @@
   - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md).
   - The solving model is `gpt-6-sol`, which beat `gpt-6-luna` in the replay benchmark (EVALUATION.md).
   - No parallel solving; Anthropic is dropped (D020).
-- **Sandbox.** The image `boc-solver:dev` is `sha256:24d759de348293c5f35f6f98f9c2459880e703fd2fd67497a6e1ffb8527afed0` (arm64), with `uv` hash-pinned via `sandbox/uv-requirements.txt`.
+- **Sandbox.** The image `boc-solver:dev` is `sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd` (arm64, rebuilt 2026-09-29 for D028), with `uv` and `advent-of-code-ocr` hash-pinned (`sandbox/*-requirements.txt`). Every private config points to it.
   - `npm run test:executor -- <id> --toolchains` passes on Docker Desktop.
   - `npm run test:linux -- <id>` passes on a native Linux daemon (dind) under umask 022 and 077.
   - An amd64 run and a bare-metal Linux run are still open.
@@ -46,12 +46,14 @@
     | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78 (the held 26.09 was settled at 0); Codex 1.04 |
     | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46; Codex 0.88 + 2.02 (the held 13.00 was settled at 0) |
     | `eval-2019` | AoC 2019, all days: 48/50 (EVALUATION.md) | Copilot 105.63; Codex 3.02 |
+    | `eval-2019b` | 2019 days 11 and 25 after D028: complete | Copilot 2.12; Codex 0 |
+    | `bench-ocr-2019a`, `bench-ocr-2019b` | Codex replay of the letter-art parts | Codex 1.23843; 0 |
     | `finish-2024` | AoC 2024 days 2 and 4–12, all first-submission correct | Copilot 24.74; Codex 0 |
     | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills, and A2b after D026 | Copilot 11.82492; Codex 0 |
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
-- **Checks.** `npm run check`: 181 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 182 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
@@ -69,7 +71,7 @@ Next concrete task: **set up the Raspberry Pi host (D027, [RPI.md](RPI.md)).**
   - fixing any memory-cgroup or 16K-page problem;
   - a short replay benchmark on the Pi to check the 60-second run timeout (with the go-ahead);
   - enabling `boc.service`, and a restart drill under systemd.
-- **Open benchmark finding (operator decision):** defect H, misread ASCII-art letters on AoC 2019 day 11 part 2 (EVALUATION.md). The candidate remedies are prompt guidance, a preinstalled OCR library for the letter font, or refusing near-duplicate readings.
+- Push the **new** solver image (D028) to the Pi with `push-image.sh`.
 - **Afterwards:** the end-to-end rehearsal (milestone 7). AoC 2024 days 1–24 are solved on the account; day 25 part 2 (the button) is pending.
 - **Once the credentials move to the Pi,** stop running live BoC commands on the development Mac with them (D022).
 
@@ -454,4 +456,10 @@ Raspberry Pi deployment files (D027, 2026-09-29):
 - Not run on real Pi hardware yet.
 
 AoC 2019 evaluation (live, 2026-09-29, agent-run with the operator's go-ahead): 48/50 parts, 47 on the first submission; day 11 part 2 lost to misread ASCII-art letters (defect H). Two real Copilot outages were handled as D024 intends. Copilot 105.63, Codex 3.02 (EVALUATION.md).
+
+Letter-art decoding (D028, 2026-09-29):
+
+- Prompt guidance and the hash-pinned `advent-of-code-ocr` library; the image was rebuilt and every private config updated.
+- Fixed pressing the final-day button after an adopted part 1 (no input), with a regression test. `npm run check`: 182 offline tests passed.
+- Live, with the operator's go-ahead: 2019 day 11 part 2 and the day 25 button. AoC 2019 is complete. A Codex replay of day 8 part 2 used `convert_6` (EVALUATION.md).
 

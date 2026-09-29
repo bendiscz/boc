@@ -13,7 +13,7 @@ Only trusted host tools write to the workspace (`src/sandbox/workspace.ts`): the
 
 ## Toolchain image
 
-`sandbox/Dockerfile` builds Python 3 with `uv` and preinstalled numpy, scipy, sympy, and networkx, plus Node.js 24, Go, and Rust/Cargo. The base image is `node:24-trixie-slim`, pinned by digest, and the other tools come from Debian's signed repositories. `uv` comes from PyPI and is hash-pinned: `sandbox/uv-requirements.txt` lists the exact version and the sha256 of each accepted wheel, and pip installs it with `--require-hashes --only-binary=:all: --no-deps`, so a wheel that does not match is refused. uv has no Python dependencies. Libraries are acquired only at image build time; solve-time containers have no network, so `uv`, `go`, and `cargo` must work offline (`UV_OFFLINE`, `GOPROXY=off`, `CARGO_NET_OFFLINE`). Adding libraries means rebuilding the image, which is the controlled dependency-acquisition path.
+`sandbox/Dockerfile` builds Python 3 with `uv` and preinstalled numpy, scipy, sympy, networkx, and `advent_of_code_ocr` (D028; hash-pinned from PyPI in `sandbox/python-requirements.txt`), plus Node.js 24, Go, and Rust/Cargo. The base image is `node:24-trixie-slim`, pinned by digest, and the other tools come from Debian's signed repositories. `uv` comes from PyPI and is hash-pinned: `sandbox/uv-requirements.txt` lists the exact version and the sha256 of each accepted wheel, and pip installs it with `--require-hashes --only-binary=:all: --no-deps`, so a wheel that does not match is refused. uv has no Python dependencies. Libraries are acquired only at image build time; solve-time containers have no network, so `uv`, `go`, and `cargo` must work offline (`UV_OFFLINE`, `GOPROXY=off`, `CARGO_NET_OFFLINE`). Adding libraries means rebuilding the image, which is the controlled dependency-acquisition path.
 
 Build on a trusted host:
 
@@ -36,9 +36,14 @@ The bundle is combined with the system bundle in `/tmp` for the PyPI step only, 
 
 **Verified 2026-09-28** (Docker Desktop, arm64). A build with the pinned `uv-requirements.txt` selected `uv-0.8.22-py3-none-manylinux_2_28_aarch64.whl`, whose downloaded sha256 matched the pin. As a negative control, pip in the image refused the same wheel against an altered hash (`--require-hashes`, offline). The image history, `/tmp`, and the system trust store contain none of the build CA's certificates. `npm run test:executor -- <id> --toolchains` passed.
 
+**Rebuilt 2026-09-29** (D028, arm64): `sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd`.
+- The `advent-of-code-ocr` wheel matched its pinned sha256, and `click` is absent.
+- The trust store contains none of the build CA's certificates: 0 of the bundle's SHA-256 fingerprints appear among the store's 150. `/tmp` is empty.
+- `npm run test:executor -- <id> --toolchains` passed, including the OCR check.
+
 ## Verification
 
-- `npm run test:executor -- <image-id>` is the opt-in probe of the production executor. It checks that the container runs non-root, with no host variables, a read-only `/work`, a writable `/tmp`, no external network interface, bounded output, and timeout and abort each killing and removing the container. With `--toolchains`, it also runs Python with numpy, scipy, sympy and networkx, `uv`, Node.js, Go, rustc, and Cargo (from a copy of the project in `/tmp`). It is not part of `npm test` or CI.
+- `npm run test:executor -- <image-id>` is the opt-in probe of the production executor. It checks that the container runs non-root, with no host variables, a read-only `/work`, a writable `/tmp`, no external network interface, bounded output, and timeout and abort each killing and removing the container. With `--toolchains`, it also runs Python with numpy, scipy, sympy and networkx, decodes synthetic letter art with `advent_of_code_ocr`, `uv`, Node.js, Go, rustc, and Cargo (from a copy of the project in `/tmp`). It is not part of `npm test` or CI.
 - `npm run test:sandbox -- <image-id>` is the original isolation probe.
 - `npm run test:linux -- <image-id>` runs the executor probe (with `--toolchains`) against a native Linux Docker daemon from any Docker host. It starts a digest-pinned `docker:dind` container whose API is reachable only on an internal network, and loads the solver image into it; the image ID is unchanged. It then runs the probe as UID 1000 on an ext4 volume, under umask `022` and `077`, and removes everything afterwards. Docker Desktop's macOS file sharing hides Linux permission semantics; this probe does not.
 

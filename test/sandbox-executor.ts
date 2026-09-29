@@ -97,6 +97,14 @@ require('node:dns').promises.lookup('adventofcode.com')
       "s.py",
       "import numpy, sympy, networkx, scipy\nprint(int(numpy.arange(4).sum()))\n",
     );
+    // The letter-art decoder on synthetic glyphs drawn from its own font table.
+    await ws.write(
+      "ocr.py",
+      "from advent_of_code_ocr import convert_6\nfrom advent_of_code_ocr.characters import ALPHABET_6\n" +
+        "glyph = {v: k for k, v in ALPHABET_6.items()}\n" +
+        "rows = ['.'.join(glyph[c].split('\\n')[r] for c in 'BOC') for r in range(6)]\n" +
+        "print(convert_6('\\n'.join(rows)))\n",
+    );
     await ws.write("m.go", 'package main\nimport "fmt"\nfunc main() { fmt.Println(6) }\n');
     await ws.write("m.rs", 'fn main() { println!("6"); }\n');
     await ws.write("m.mjs", "console.log(2 * 3);\n");
@@ -120,8 +128,15 @@ require('node:dns').promises.lookup('adventofcode.com')
       assert.equal(result.exitCode, 0, `${argv.join(" ")}: ${result.stderr}`);
       assert.equal(result.stdout.trim(), "6", argv.join(" "));
     }
+    const ocr = await executor.run({
+      workspace: ws.root,
+      argv: ["python3", "ocr.py"],
+      timeoutMs: 60_000,
+    });
+    assert.equal(ocr.exitCode, 0, `ocr.py: ${ocr.stderr}`);
+    assert.equal(ocr.stdout.trim(), "BOC", "advent_of_code_ocr decodes its own glyphs");
     console.log(
-      "Toolchains passed: python3 (numpy, scipy, sympy, networkx), uv, node, go, rustc, cargo.",
+      "Toolchains passed: python3 (numpy, scipy, sympy, networkx, advent_of_code_ocr), uv, node, go, rustc, cargo.",
     );
   }
   console.log(

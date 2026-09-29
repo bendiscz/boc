@@ -520,3 +520,18 @@ test("an interrupted submission that AoC never recorded is resubmitted once (D02
   assert.match(f.prompts[1] ?? "", /submission of 7 was interrupted, and its outcome is unknown/);
   assert.doesNotMatch(f.prompts[1] ?? "", /- 7: rejected/);
 });
+
+test("an adopted final-day part 1 can press the part 2 button without the input", async (t) => {
+  const f = await fixture(t, {
+    aoc: [
+      page(1, ["50"]), // Part 1 already solved on AoC: adopted, the input is never fetched.
+      finalDay("button"),
+      reply("Congratulations! Synthetic completion text."),
+      finalDay("complete"),
+    ],
+    model: [],
+  });
+  assert.deepEqual(await f.solve(), { part1: "solved", part2: "solved" });
+  assert.ok(!f.aocCalls.includes("input"), "no input download");
+  assert.equal(f.prompts.length, 0);
+});

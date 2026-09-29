@@ -1,0 +1,10 @@
+# Python libraries for solver programs beyond Debian's packages (D010, D028), installed
+# with pip --require-hashes --only-binary=:all: --no-deps.
+#
+# advent-of-code-ocr: MIT-licensed, general-purpose decoder of the 6-row block letter
+# font that Advent of Code uses for answers drawn as pixels (defect H, EVALUATION.md).
+# Its only dependency, click, serves the command-line entry point and is not installed;
+# the library API (convert_6) needs nothing. Hash: PyPI JSON API for 1.1.0, fetched
+# 2026-09-29, and matched against a separately downloaded wheel (shasum -a 256).
+advent-of-code-ocr==1.1.0 \
+    --hash=sha256:a5a0668b88e94a8d7319fe024a8840799bf1ba8526fc4a5b5f5178459d678a36

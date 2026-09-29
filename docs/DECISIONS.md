@@ -226,3 +226,14 @@ On 2026-09-29 the operator approved deploying BoC on a dedicated Raspberry Pi 5 
 - **Credentials:** moved to the Pi, which then owns them. The development machine must not run BoC with the same credential files again (D022).
 - **Checks before enabling the service:** the memory cgroup, so that solver memory limits apply, is enabled by `setup.sh` if missing; Docker memory-limit support, the 16K page size, NTP, the SSD, and private-file modes are checked by `check.sh`; and the executor probe runs with every toolchain.
 
+## D028 — Decoding letter art: prompt guidance and a preinstalled OCR library
+
+On 2026-09-29 the operator chose remedies (a) and (b) for defect H (EVALUATION.md: letters drawn as ASCII art were misread):
+
+- **(a) Prompt guidance.** The solver system prompt says never to read drawn letters by eye. The model decodes them in code, proposes exactly the string its program printed, and fixes the drawing (crop, orientation, pixel characters) instead of guessing. The prompt names the library and its input requirements: 6 equal rows starting at the first drawn column, with no trailing blank columns.
+- **(b) Library.** `advent-of-code-ocr` 1.1.0 (MIT, a general-purpose decoder of AoC's 6-row block letter font, not a puzzle solution) is preinstalled in the solver image.
+  - It is hash-pinned in `sandbox/python-requirements.txt` and installed with `--require-hashes --only-binary=:all: --no-deps`, like uv.
+  - Its dependency `click` serves only the command-line entry point and is not installed.
+- **Verification:** the toolchain probe decodes synthetic glyphs taken from the library's own font table. Live runs are recorded in EVALUATION.md.
+- **Not chosen:** (c), refusing near-duplicate readings.
+
