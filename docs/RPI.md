@@ -42,7 +42,7 @@ Files in `deploy/rpi/`:
 - **Clock:** enables NTP and `systemd-time-wait-sync`, so that the service starts only on a synchronized clock.
 - **Docker Engine:** from Docker's Debian repository. The daemon log driver is `local`, and solver containers are removed after every run anyway.
 - **Node.js:** the official Node.js 24 arm64 build in `/usr/local`, verified against the release's `SHASUMS256.txt`. The version is set by `NODE_VERSION`, default 24.21.0.
-- **The `boc` user:** home directory mode `0700`, in the `docker` group. Your `authorized_keys` is copied to it, so the push scripts can connect as `boc@<pi>`. Membership in the `docker` group is root-equivalent, which is one reason the Pi runs nothing else.
+- **The `boc` user:** home directory mode `0700`, in the `docker` group. If you created `boc` as the admin account in Raspberry Pi Imager, the script reuses it. The service account then also has `sudo`, protected by a password; that isolates no less than membership in the `docker` group already does. Your `authorized_keys` is copied to it, so the push scripts can connect as `boc@<pi>`. Membership in the `docker` group is root-equivalent, which is one reason the Pi runs nothing else.
 - **BoC itself:** a checkout in `~boc/boc`, built with `npm ci --ignore-scripts && npm run build`. A `boc` wrapper goes in `/usr/local/bin`.
 - **Service:** `/etc/systemd/system/boc.service`, installed but not enabled.
 - **Firewall:** `ufw` allowing only SSH inbound. BoC needs no inbound connections; set `BOC_FIREWALL=0` to skip this.

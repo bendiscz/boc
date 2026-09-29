@@ -81,7 +81,8 @@ id boc >/dev/null 2>&1 || useradd --create-home --home-dir "$BOC_HOME" --shell /
 usermod -aG docker boc
 chmod 0700 "$BOC_HOME"
 # SSH access for the operator's transfers (push-image.sh, push-private.sh).
-if [ -n "${SUDO_USER:-}" ] && [ -f "/home/$SUDO_USER/.ssh/authorized_keys" ]; then
+# Skipped when the admin account is boc itself (the installer then created it).
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != boc ] && [ -f "/home/$SUDO_USER/.ssh/authorized_keys" ]; then
   install -d -m 0700 -o boc -g boc "$BOC_HOME/.ssh"
   install -m 0600 -o boc -g boc "/home/$SUDO_USER/.ssh/authorized_keys" "$BOC_HOME/.ssh/authorized_keys"
 fi
