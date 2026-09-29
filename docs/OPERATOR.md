@@ -72,6 +72,7 @@ node dist/main.js run boc.config.json --tui           # live dashboard
   - When credits run out mid-attempt, that subscription is dropped for the part and the part fails over.
 - A provider fault (a charge that cannot be settled) stops the whole run until you reconcile it. It never fails over, because the charge is unknown.
 - **Readiness checks (D022).** They run when BoC starts, and 30 minutes before each release. If a check fails, it runs again 5 minutes before the release.
+  - While BoC waits for a release more than a day away, for example when started in November, the checks also run **daily** (D029).
   - Every subscription's credential is refreshed, which is not a model call and spends no credits.
   - The AoC session is checked with one page read.
   - Failures are logged as `… check FAILED: …`.

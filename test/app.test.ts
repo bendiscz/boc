@@ -695,3 +695,46 @@ test("a wait of months before the event sleeps in short steps, never past the re
   assert.ok(f.sleeps.length > 80_000 && f.sleeps.every((ms) => ms <= 60_000));
   assert.ok(f.aocCalls[0]?.endsWith("@2025-12-01T05:00:03.000Z"), f.aocCalls[0]);
 });
+
+test("a long wait before the event checks readiness daily, then as usual before the release", async (t) => {
+  let credentialChecks = 0;
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    checkCredential: async () => {
+      credentialChecks++;
+      // The second daily check finds the credential rejected; the next check is fine.
+      if (credentialChecks === 3) {
+        throw new AdapterError("Copilot rejected the credential; run boc login.", "rejected");
+      }
+    },
+  });
+  f.setClock("2025-11-28T06:00:00.000Z");
+  const r = recordingNotifier();
+  const results = await f.run({ days: [1], notifier: r.notifier });
+  assert.equal(results[0]?.part2, "solved");
+  assert.deepEqual(
+    f.aocCalls.filter((c) => c.startsWith("session")),
+    [
+      "session @2025-11-28T06:00:00.000Z",
+      "session @2025-11-29T06:00:00.000Z",
+      "session @2025-11-30T06:00:00.000Z",
+      "session @2025-12-01T04:30:00.000Z",
+    ],
+    "start, two daily checks, then T-30 (no daily check within a day of it)",
+  );
+  assert.equal(credentialChecks, 4);
+  assert.ok(
+    f.events.some((e) => /2025-11-30T06:00:00.000Z daily check FAILED: subscription first/.test(e)),
+  );
+  assert.ok(
+    f.events.some((e) =>
+      /2025-12-01T04:30:00.000Z day-01 pre-release check: subscription first is usable again/.test(
+        e,
+      ),
+    ),
+  );
+  assert.ok(
+    r.alerts.some((a) => a.title === "BoC 2025: daily check failed" && a.priority === "urgent"),
+  );
+  assert.deepEqual(r.heartbeats, [true, true, false, true]);
+});

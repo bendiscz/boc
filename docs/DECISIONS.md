@@ -161,7 +161,7 @@ On 2026-09-28 the operator decided that credentials are checked when BoC starts 
 - **AoC session.** `AocClient.checkSession` makes one authenticated read of `/settings`, re-reading the cookie file first, and classifies the result as `ok`, `logged-out`, or `unknown`.
   - A logged-out session is logged prominently but cannot fail over: there is one AoC account. The release fetch then stops with the existing clear error.
   - Traffic: one request at start and one at T−30 per unreleased day, plus one recheck at T−5 only if the T−30 check failed. Past or already solved days get no pre-release check.
-- **Timing.** At T−30 BoC runs the checks, and if any failed it rechecks at T−5. It then sleeps to the release as before. A run started within 30 minutes of a release relies on its start check.
+- **Timing.** At T−30 BoC runs the checks, and if any failed it rechecks at T−5. (Amended by D029: a daily check during long waits.) It then sleeps to the release as before. A run started within 30 minutes of a release relies on its start check.
 - **Verification.** Live on 2026-09-28, with one authenticated request made with the operator's go-ahead, `/settings` returned HTTP 200 (about 6 KB) with the logged-in marker, and the check reported `ok`. The operator confirmed in an anonymous browser window that without a valid session `/settings` redirects to `/2025`. BoC does not follow redirects and classifies any 3xx as `logged-out`.
 
 ## D023 — Operator alerts: ntfy push and a healthchecks.io dead-man's switch
@@ -237,3 +237,10 @@ On 2026-09-29 the operator chose remedies (a) and (b) for defect H (EVALUATION.m
 - **Verification:** the toolchain probe decodes synthetic glyphs taken from the library's own font table. Live runs are recorded in EVALUATION.md.
 - **Not chosen:** (c), refusing near-duplicate readings.
 
+## D029 — Daily readiness checks during long waits
+
+On 2026-09-30 the operator decided that BoC, started weeks before the event (as the Pi service is), checks readiness every day while it waits. Before this, the first check after the start check came at T−30 on 1 December: about 62 idle days for the refresh tokens, and an expired credential or cookie would have been found with 30 minutes to fix it.
+
+- **When:** during a wait for a pre-release check, whenever 24 hours have passed since the last check. There is no daily check within a day of T−30, and none during the event, where the gaps between checks are under a day.
+- **What:** the D022 readiness check. That is a forced OAuth refresh of every subscription (no model call; the rotated credential is persisted) and one authenticated AoC `/settings` read. It adds one AoC request per day of waiting, far below the 15-minute guidance for automated traffic.
+- **Reporting:** the log reads `daily check passed` or `daily check FAILED: …`. A failure sends an urgent alert and healthchecks `/fail`, and marks the subscription unavailable until a later check passes (D022, D024). A pass sends the success heartbeat, which healthchecks.io ignores outside its December schedule.

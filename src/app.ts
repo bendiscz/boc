@@ -35,6 +35,12 @@ import { abortableSleep } from "./util/sleep.ts";
 const PRE_RELEASE_CHECK_MS = 30 * 60_000;
 /** After a failed pre-release check, check again this long before the release. */
 const PRE_RELEASE_RECHECK_MS = 5 * 60_000;
+/**
+ * During a long wait (for example weeks before the event), readiness is checked
+ * this often: refresh tokens stay in use, and an expired credential or AoC cookie
+ * is reported weeks early instead of at T−30 (operator decision, D029).
+ */
+export const DAILY_CHECK_MS = 24 * 3_600_000;
 
 /** How long a usage-limited subscription is skipped when the provider gives no reset time. */
 const DEFAULT_REFUSAL_MS = 60 * 60_000;
@@ -395,6 +401,7 @@ async function runEventWith(
       return false;
     };
     await checkReadiness("start");
+    let lastCheck = now().getTime();
     alert(
       "low",
       "started",
@@ -415,8 +422,16 @@ async function runEventWith(
             sleep,
             ...(options.signal ? { signal: options.signal } : {}),
           };
+          for (;;) {
+            const daily = lastCheck + DAILY_CHECK_MS;
+            if (daily >= release - PRE_RELEASE_CHECK_MS) break;
+            await sleepUntil(daily, clockWait);
+            await checkReadiness("daily");
+            lastCheck = now().getTime();
+          }
           await sleepUntil(release - PRE_RELEASE_CHECK_MS, clockWait);
           const ok = await checkReadiness(`${puzzle} pre-release`);
+          lastCheck = now().getTime();
           if (!ok && now().getTime() < release - PRE_RELEASE_RECHECK_MS) {
             await sleepUntil(release - PRE_RELEASE_RECHECK_MS, clockWait);
             await checkReadiness(`${puzzle} final pre-release`);
