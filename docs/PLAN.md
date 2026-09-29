@@ -45,7 +45,7 @@
     | `smoke-2025` | combined-config smoke test | 2.04 |
     | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78 (the held 26.09 was settled at 0); Codex 1.04 |
     | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46; Codex 0.88 + 2.02 (the held 13.00 was settled at 0) |
-    | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills | Copilot 8.77; Codex 0 |
+    | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills, and A2b after D026 | Copilot 11.82492; Codex 0 |
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
@@ -424,4 +424,5 @@ Operator decisions on the AoC drills (D026, 2026-09-29):
   - one resubmission, then blocked after a second unknown outcome;
   - end to end, an interrupted submission resubmitted once and solved;
   - session checks braked in their own window.
+- Live, with the operator's go-ahead: drill A2b (2024 day 3), a crash during a submission, then a resubmission judged correct. Both parts solved (EVALUATION.md).
 

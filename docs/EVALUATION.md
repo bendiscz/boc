@@ -149,3 +149,9 @@ Supervised, agent-run with the operator's go-ahead, on AoC 2024. Days 1–12 of 
 - **Adoption (fixed before the drills).** A part whose accepted answer is already on the page is recorded as solved (`part-adopted`), with no model call or submission.
 - **G. A crash between the write-ahead record and AoC's response can lose the part.** Fixed by the operator's choice of one automatic resubmission (D026). Reconciliation cannot tell "never judged" from "judged wrong" when the level is still open, so it blocks the answer (AOC.md, "Not yet handled"). The model then re-derives the same answer and cannot propose it. The attempts are wasted, and the part gives up. `boc submission not-judged` cannot revive a part that has given up. The window is short, about 0.1–0.9 s per submission.
 - **Brake after a session recovery.** Fixed (D026): session checks have their own brake window. In A1 the failed-session traffic plus the normal burst came to 10 requests. The per-process brake (10 per 10 minutes) then held part 2's correct answer for 7.7 minutes.
+
+### Rerun after D026 (2026-09-29)
+
+- **A2b** (2024 day 3): `kill -9` 50 ms after the `submitting` log line. The kill again landed before AoC recorded the answer. The rerun removed both stale locks, reconciled the answer as `not-correct` (the level was still open), and started attempt 2. That attempt re-derived the same answer and proposed it (the prompt now calls its outcome unknown). The one allowed resubmission was judged correct, and part 2 followed on its first submission. Eight AoC requests; the brake never engaged.
+- Credits for all live AoC drills: Copilot 11.82492, Codex 0.
+
