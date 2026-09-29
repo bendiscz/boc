@@ -402,3 +402,28 @@ test("provider errors are reduced to a safe category", async () => {
     "Provider rejected the credential; run boc login.",
   );
 });
+
+test("transport and server failures are classified as an outage, not a credential problem", async () => {
+  const { providerErrorMessage, OUTAGE_MESSAGE, CREDENTIAL_MESSAGE } = await import(
+    "../src/pi/guarded-streams.ts"
+  );
+  for (const raw of [
+    "Connection error.",
+    "fetch failed",
+    "503 Service Unavailable: upstream said my prompt",
+    "Request timed out.",
+    "socket hang up",
+    "Copilot request failed before a response: connection error.",
+  ]) {
+    assert.equal(providerErrorMessage(raw), OUTAGE_MESSAGE, raw);
+  }
+  assert.equal(
+    providerErrorMessage("Copilot credential rejected (401) before a response."),
+    CREDENTIAL_MESSAGE,
+  );
+  assert.equal(
+    providerErrorMessage("Copilot request failed before a response."),
+    "Provider returned an error; any unresolved reservation remains held.",
+    "an unclassified failure stays a model-attempt failure",
+  );
+});

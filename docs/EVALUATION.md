@@ -116,3 +116,18 @@ The first try at drill 2 made the proxy drop refused tunnels without replying. N
 - **B. A provider outage during a solve burns every attempt within milliseconds.** Network errors and 5xx responses are neither a usage limit nor a rejected credential, so each attempt ends as `failed`, counts toward the cap of 4, and the next one starts at once. The part then gives up permanently, with no failover and no retry later.
 - **C. Credit exhaustion mid-attempt gives up the part instead of failing over.** Only the start of an attempt checks whether a subscription can afford it (`minimumAttemptCredits`). A denial inside an attempt ends the part as `gave-up (budget-exhausted)`, even when another subscription on a separate pool has credits.
 - **D. A crash leaves a lock that blocks a restart.** The message does not say that the holder is dead or suggest `boc ledger break-lock`. With systemd `Restart=on-failure` on an unattended host, BoC would refuse to start until the operator intervenes.
+
+### Fixes and live rerun (2026-09-29)
+
+Defects A–D are fixed (D024) and covered by offline regression tests. The drills were rerun live in fresh storage (`var/bench/drill-2025b`, `drill-2025b-quota`), with the drill proxy now answering 503 and able to cut Copilot alone:
+
+| # | Drill | Result |
+| --- | --- | --- |
+| 1b | Every provider unreachable from the start, lifted after about 4.5 minutes | Both start checks were classified as unreachable and retried after 1 minute. Attempts failed over between the subscriptions with backoff (15 s, 30 s, 60 s, 120 s); eight refusals were not counted as attempts. The first retry after recovery came 17 s later, and both parts were solved on the first submission. |
+| 2b | Copilot-only outage 4 s into attempt 1 | Failed over to Codex within 10 ms. Solved on the first submission. |
+| 2c | Full outage 4 s into attempt 1, lifted after 45 s | Waited with backoff. The retry came 80 ms after recovery. Solved on the first submission. |
+| 3b | `kill -9` mid-call, then a plain rerun | Both stale locks were removed automatically. The run resumed and solved both parts with one submission each. The killed call's reservation (13.00) stays held as an unknown charge. |
+| 4d | Copilot per-puzzle limit 15 | `attempt 1 stopped: credits exhausted on copilot`, then attempt 2 on Codex. Solved on the first submission. |
+
+- **A real transient failure.** During the rerun, Copilot's start check once failed with no drill proxy involved. It was classified as unreachable, and three checks a minute later succeeded. Before D024 this would have read `run boc login` and skipped Copilot for the rest of the run.
+- **Credits:** Copilot 7.89 spent plus 13.00 held; Codex 2.90.

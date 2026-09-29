@@ -14,7 +14,8 @@
   - refusal of known-wrong proposals back to the model;
   - failover between subscriptions on provider refusals (D021);
   - readiness checks at start and T−30 before each release, with a recheck at T−5 (D022);
-  - ntfy and healthchecks.io alerts (D023).
+  - ntfy and healthchecks.io alerts (D023);
+  - outage handling (D024, 2026-09-29): outages are refusals with backoff and failover; parts wait up to 6 hours after release; credential checks tell an outage from a rejection; credit exhaustion mid-attempt fails over; stale locks are removed at start.
 - **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance.
 - **Providers and model:**
   - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md).
@@ -43,23 +44,23 @@
     | `bench-sol-2025`, `bench-sol-2025b`, `bench-sol-2024` | sol replays | 7.96, 5.00, 22.88; `bench-sol-2024` also holds 3.39 by the operator's decision |
     | `smoke-2025` | combined-config smoke test | 2.04 |
     | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78, and 26.09 held (two unknown-charge reservations, EVALUATION.md); Codex 1.04 |
+    | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46, and 13.00 held; Codex 0.88 + 2.02 |
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
-- **Checks.** `npm run check`: 166 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 174 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **fix the four defects found by the live failure drills (2026-09-29, EVALUATION.md, "Live failure drills")**, after the operator confirms the proposed behaviour:
+Next concrete task: **to be decided with the operator.** The live failure drills found defects A–D, which are now fixed (D024) and pass a live rerun (EVALUATION.md). Candidates:
 
-- **A.** Classify credential-check failures: a network, TLS, timeout, or 5xx failure is `unreachable`; only 401/403 is `rejected`. An unreachable subscription is rechecked with bounded backoff (for example every 1–2 minutes) rather than skipped until the next day's check. Log messages must tell the two apart.
-- **B.** Treat transport and 5xx provider errors as a third refusal kind, `outage`. The attempt is not counted, and the part fails over to the next subscription. If every subscription is out, wait with capped backoff and retry, up to an operator-chosen bound, rather than give up.
-- **C.** A credit denial inside an attempt excludes that subscription for the part and fails over. The part gives up only when no subscription can afford an attempt.
-- **D.** At start, remove a stale lock automatically when its holder PID does not exist on this host, and log it. Otherwise the error names the holder and suggests `boc ledger break-lock`.
+- an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`, now safe after a crash because stale locks are removed at start), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
+- the remaining live drills, which need AoC: an expired AoC session and duplicate-submission protection (both are covered offline);
+- the end-to-end rehearsal (milestone 7).
 
-After the fixes: add offline regression tests, rerun drills 1–4 live (with the operator's go-ahead), and record the results. Later candidates: an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU.
+Held drill reservations, for the operator to settle or keep: in `var/bench/drill-2025`, 13.07 (provably never reached the provider, so its true charge is 0) and 13.02 (a killed call); in `var/bench/drill-2025b`, 13.00 (a killed call).
 
 Operator decision (2026-09-28): the 3.39-credit reservation held in `var/bench/sol-2024` stays held. The Codex dashboard is too aggregated to read one call's charge, and the reservation counts only against that bench config. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
@@ -122,7 +123,7 @@ Live runs (provider calls, AoC requests, submissions) spend real credits: start 
 ### 7. AoC 2026 readiness
 
 - [ ] Recheck site rules, event calendar, provider policy, models, and credit semantics.
-- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29 and found defects A–D (EVALUATION.md); fix them and rerun the drills.)
+- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills, an expired session and duplicate submissions, are offline only.)
 - [x] Document installation, credential setup, budget configuration, private data handling, operation, and recovery. (`OPERATOR.md`)
 - [ ] Run an end-to-end rehearsal and obtain any remaining operator-side setup.
 
@@ -395,3 +396,17 @@ Live failure drills (live, 2026-09-29, agent-run with the operator's go-ahead):
 - Passed: process death and resume (after a manual `break-lock`), and a rejected credential with failover at the start check.
 - Found defects A–D (EVALUATION.md). Also found a drill-method artifact: Node's `NODE_USE_ENV_PROXY` loops on dropped CONNECT tunnels.
 - No code changes; `npm run check`: 166 offline tests passed before the drills.
+
+Outage handling and drill rerun (D024, 2026-09-29):
+
+- Fixes A–D as recorded in D024. The operator chose the 6-hour retry window.
+- `npm run check`: 174 offline tests passed. New tests:
+  - outage failover without counting an attempt, with backoff;
+  - waiting when every subscription is out, then solving, with one alert per part;
+  - a persistent outage given up about 6 hours after release, after which the run continues with the next day;
+  - an unreachable start check retried in time for the release;
+  - credit exhaustion mid-attempt failing over;
+  - stale-lock removal for a dead PID and for an earlier boot, while a live owner is kept with a clear error;
+  - classification of outages versus credential rejections, and of refresh failures.
+- Live rerun of drills 1–4 via replay, all passed (EVALUATION.md). Drill tooling: `var/drill/proxy.mjs` (`SIGUSR1` toggles a full outage, `SIGUSR2` a Copilot-only one, `down` starts in an outage) and `var/drill/run.sh`.
+

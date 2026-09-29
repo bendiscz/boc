@@ -144,7 +144,7 @@ On 2026-09-28, following the Codex credential outage during the benchmark:
 - **Recording:** the attempt is recorded with outcome `refused`. `refusedAttempts` counts these separately, and they never count toward `maxAttemptsPerPart`, because the model did not fail.
 - **Failover:** the part continues with the next subscription in configuration order (operator preference). A subscription that refused is not retried within the same part.
 - **Run-level skipping:** the run loop skips a usage-limited subscription until the announced reset (default 60 minutes). A subscription with a rejected credential is skipped until a readiness check passes (amended by D022). Before D022, it was skipped for the rest of the day.
-- **Stopping:** the run stops only when every subscription has refused.
+- **Stopping:** the run stops only when every subscription has refused. (Superseded by D024: outages are refusals too, the part waits within a retry window, and the run then continues with the next day.)
 - **Limits:** the ledger still admits every call, so failover cannot bypass a limit, and units from different pools are never combined.
 - **Provider faults** (unknown charges) still stop the run without failover: the adapter's accounting just failed, and the charge must be reconciled first.
 
@@ -155,7 +155,7 @@ On 2026-09-28 the operator decided that credentials are checked when BoC starts 
 - **Credentials.** `ProviderAdapter.checkCredential` forces an OAuth refresh without a model call, and persists the rotated credential.
   - For Copilot, the refresh is the GitHub-to-Copilot token exchange, so it also proves the entitlement. For Codex, it is the auth.openai.com refresh.
   - A forced refresh also repairs an invalidated access token while the refresh token is still valid.
-  - A failed check marks the subscription unavailable, so selection fails over (D021) before the release rather than at it. It stays unavailable until a later check passes, for example after `boc login`.
+  - A failed check marks the subscription unavailable, so selection fails over (D021) before the release rather than at it. It stays unavailable until a later check passes, for example after `boc login`. (Amended by D024: only a rejected credential does; an unreachable provider is retried after 1 minute.)
   - A credential refusal during a run triggers an immediate check.
   - Refresh tokens can be single-use, so concurrently running BoC processes must never share a credential file.
 - **AoC session.** `AocClient.checkSession` makes one authenticated read of `/settings`, re-reading the cookie file first, and classifies the result as `ok`, `logged-out`, or `unknown`.
@@ -173,3 +173,24 @@ On 2026-09-28 the operator chose ntfy for push notifications and healthchecks.io
 - **Content:** day, part, outcome, attempts, submission count, credits, time since release, and fixed-message error descriptions. Never puzzle text, inputs, or answers.
 - **Heartbeat:** a success ping after each passed readiness check (start, T−30, T−5). `/fail` goes out on a failed check or a stopped run. The operator's cron schedule on healthchecks.io defines "missing".
 - **Delivery:** best effort. A 10-second timeout per request, no redirects, deduplication within 10 minutes, at most 30 alerts per hour (then one "suppressed" notice), and a bounded flush before exit. A failure never affects a run. Replay benchmarks are silent.
+
+## D024 — Outage handling, a 6-hour retry window, and automatic stale-lock removal
+
+The live failure drills of 2026-09-29 (EVALUATION.md) found four defects. On the same day the operator approved these fixes and set the retry window to 6 hours after release:
+
+- **Credential checks tell an outage from a rejection.** The adapter classifies a failed refresh:
+  - `rejected`: an explicit 400, 401, or 403, `invalid_grant`, or "unauthorized". The subscription is skipped until a check passes (D022), and the log says `run boc login`.
+  - `unreachable`: anything else, such as a network or TLS failure, a timeout, a 5xx, or a malformed reply. The subscription is retried after 1 minute. Errors default to `unreachable`: retrying a dead credential costs a refresh request, while skipping over an outage would lose a release.
+- **Outages are refusals.** The guard classifies a provider error as `outage` with pi-ai's own transient-error classifier (`isRetryableAssistantError`), after the credential and usage-limit rules.
+  - As with other refusals (D021), the attempt is recorded as `refused` and does not count toward the attempt cap, and the part fails over.
+  - The outage keeps the subscription out for 15 s, 30 s, 60 s, 120 s, then 5 minutes per consecutive outage. The counter resets once the provider answers.
+  - A brief outage that other subscriptions cover alerts once. A lone, first outage does not alert at all.
+- **Waiting instead of giving up.** When no subscription can run, the part first offers the refused subscriptions again (each such retry follows a real refusal, so it cannot spin). If none can run, it sleeps until the earliest one becomes available.
+  - Rejected credentials are rechecked every 5 minutes, so `boc login` repairs them within the window.
+  - The window ends 6 hours after the later of the puzzle's release and the time that day's solving began. The second case covers past-day and replay runs.
+  - After the window the part ends as `provider-unavailable` (resumable), an urgent alert goes out, and **the run continues with the next day** instead of stopping.
+  - Replay waits in real time for providers, while its AoC embargoes stay virtual.
+- **Credit exhaustion inside an attempt fails over.** The attempt is recorded as `budget-exhausted` and counts. The part returns to `ready` (a change to the state machine; older journals replay the same way), and that subscription is excluded for the rest of the part. The part gives up only through the attempt cap, or ends as `no-subscription` when no subscription can afford an attempt.
+- **Stale locks are removed at start.** `boc run` and `boc replay` remove a ledger or run-state lock of this host in two cases: its PID no longer exists, or the host has booted since the lock was taken. Locks now record the boot time. A live owner's lock, or another host's, is kept. The error then names the owner's PID and points to `boc ledger break-lock`. This makes systemd `Restart=on-failure` safe.
+- **Unchanged:** provider faults (unknown charges) still stop the run (D021).
+

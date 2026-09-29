@@ -63,12 +63,16 @@ node dist/main.js run boc.config.json --tui           # live dashboard
 - **Failover.** Subscriptions are tried in configuration order, for example `gpt-6-sol` via Copilot first, then via Codex.
   - When a provider refuses requests, BoC fails over to the next subscription, and the refused attempt does not count toward the attempt limit. The log line reads `subscription … unavailable …; failing over to …`.
   - A usage-limited subscription is skipped until the provider's announced reset, or for 60 minutes if none is given. A rejected credential is skipped until a readiness check passes; run `boc login` to restore it.
-  - If every subscription refuses, the run stops.
+  - **Outages** (network, TLS, timeouts, 5xx) are refusals too. The subscription is retried after 15 s, 30 s, 60 s, 120 s, then every 5 minutes, and the part fails over meanwhile.
+  - **When no subscription can run**, the part waits and retries until 6 hours after the puzzle's release (or after that day's solving began, for past days). Rejected credentials are rechecked every 5 minutes, so `boc login` repairs them within that window. After the window, the part ends as `provider-unavailable` (resumable by a later run), you get an urgent alert, and the run continues with the next day (D024).
+  - When credits run out mid-attempt, that subscription is dropped for the part and the part fails over.
 - A provider fault (a charge that cannot be settled) stops the whole run until you reconcile it. It never fails over, because the charge is unknown.
 - **Readiness checks (D022).** They run when BoC starts, and 30 minutes before each release. If a check fails, it runs again 5 minutes before the release.
   - Every subscription's credential is refreshed, which is not a model call and spends no credits.
   - The AoC session is checked with one page read.
-  - Failures are logged as `… check FAILED: …`. Run `boc login`, or replace the cookie file, before the recheck; a running BoC picks up both files.
+  - Failures are logged as `… check FAILED: …`.
+    - A rejected credential says `run boc login`; run it, or replace the cookie file, before the recheck. A running BoC picks up both files.
+    - A provider that could not be reached (`network or server error`) is retried automatically after 1 minute.
   - A subscription that fails the check is skipped, so the release uses the next one.
   - Do not run two BoC processes that share a credential file at the same time: refresh tokens can be single-use.
 
@@ -102,8 +106,8 @@ BoC can push alerts to your phone through [ntfy](https://ntfy.sh) and keep a [he
 
 | Priority | When |
 | --- | --- |
-| Urgent | A readiness check failed (start, T−30, T−5); the run stopped (every subscription refused, provider fault, AoC authentication, or any error) |
-| High | Failover to another subscription; a day with a part that gave up, stayed uncertain, or had no subscription |
+| Urgent | A readiness check failed (start, T−30, T−5); a day was abandoned after the 6-hour retry window; the run stopped (provider fault, AoC authentication, or any error) |
+| High | Failover to another subscription; waiting for providers; a day with a part that gave up, stayed uncertain, or had no subscription |
 | Default | A day finished (both parts solved, or waiting for stars on the final day) |
 | Low | Run started; stopped by you (Ctrl-C) |
 
@@ -122,7 +126,7 @@ Stop BoC before any command that changes state. They all take the same locks.
 
 | Situation | What to do |
 | --- | --- |
-| "locked by another process" after a crash | `node dist/main.js ledger break-lock boc.config.json` removes both the ledger and the run-state lock, only for a dead process on this host. |
+| "locked by another process" | `boc run` and `boc replay` remove a lock left by a crash or a reboot on this host automatically. If the error remains, the named PID is running, or the lock is from another host: check for a running BoC first. `node dist/main.js ledger break-lock boc.config.json` removes both locks, only for a dead process on this host. |
 | Held / orphaned / uncertain reservations | Find the actual charge in the provider's usage records, then `ledger settle boc.config.json <id> <amount> operator:<receipt-ref>`. Held credits stay counted until settled. |
 | Unacknowledged overrun (admission blocked) | Investigate, then `ledger acknowledge boc.config.json <id> <note>`. The spent amount stays recorded. |
 | Uncertain submission | The next run reads the puzzle page to resolve it. If AoC provably never judged it (for example, an auth rejection), use `submission not-judged boc.config.json <day> <part> <n> <note>`. A new attempt may then propose the answer again; nothing is resubmitted automatically. |

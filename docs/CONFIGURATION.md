@@ -86,7 +86,7 @@ Duplicate IDs, duplicate credential paths (including normalized relative-path al
 - `boc views <config>` — regenerate private Markdown summaries under `storageDir`.
 - `boc ledger settle <config> <reservation-id> <amount> <operator:receipt-ref>` — record an authoritative charge for a held reservation (requires the ledger lock: stop BoC first).
 - `boc ledger acknowledge <config> <reservation-id> <note>` — acknowledge a reviewed overrun so admission can resume.
-- `boc ledger break-lock <config>` — remove a lock left by a dead process on this host.
+- `boc ledger break-lock <config>` — remove a lock left by a dead process on this host. `run` and `replay` do this automatically at start (D024).
 - `boc submission not-judged <config> <day> <part> <submission#> <note>` — operator override for a submission AoC never judged, for example one rejected with an auth error and later reconciled as `not-correct`. It makes the answer submittable again by a new attempt; it never submits by itself. It requires the run-state lock, so stop BoC first.
 
 The private artifact layout is documented in `src/state/layout.ts` and D013.

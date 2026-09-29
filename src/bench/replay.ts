@@ -11,6 +11,7 @@ import type { BocConfig } from "../config.ts";
 import { type PartNumber, type PuzzleId, puzzleId } from "../state/ids.ts";
 import { type Layout, layout, writeFileAtomic } from "../state/layout.ts";
 import { type RunState, RunStore } from "../state/run-state.ts";
+import { abortableSleep } from "../util/sleep.ts";
 
 /**
  * Model benchmark by replay (PLAN.md, "solver model choice"). The normal solve
@@ -163,6 +164,8 @@ export async function replayEvent(options: ReplayOptions): Promise<ReplayReport>
     pastOnly: true,
     aocClient: createReplayClient({ year, sources, solvedPart1 }),
     now,
+    // Waiting for a provider to recover is real time, not a simulated embargo.
+    providerSleep: options.providerSleep ?? abortableSleep,
     sleep: async (ms, signal) => {
       signal?.throwIfAborted();
       skipped += ms;

@@ -31,6 +31,17 @@ const PRE_RELEASE_RECHECK_MS = 5 * 60_000;
 
 /** How long a usage-limited subscription is skipped when the provider gives no reset time. */
 const DEFAULT_REFUSAL_MS = 60 * 60_000;
+/** Consecutive outages of one subscription skip it this long (the last value repeats). */
+export const OUTAGE_BACKOFF_MS = [15_000, 30_000, 60_000, 120_000, 300_000] as const;
+/** A credential check that could not reach the provider is retried this soon. */
+export const UNREACHABLE_RECHECK_MS = 60_000;
+/** While a part waits, rejected credentials are rechecked this often (boc login repairs them). */
+export const CREDENTIAL_RECHECK_MS = 5 * 60_000;
+/**
+ * A part keeps waiting for a usable subscription until this long after its puzzle's
+ * release, or after the day's solving began if later (past days). Operator decision.
+ */
+export const PROVIDER_RETRY_WINDOW_MS = 6 * 3_600_000;
 
 const BRAKE_NOTE = `at most ${DEFAULT_RATE_CAP.max} requests per ${DEFAULT_RATE_CAP.windowMs / 60_000} minutes`;
 
@@ -57,6 +68,8 @@ export interface RunOptions {
   readonly executor?: Executor;
   readonly now?: () => Date;
   readonly sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  /** Waits for providers to recover; default `sleep`. Replay passes a real sleep. */
+  readonly providerSleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   readonly signal?: AbortSignal;
   readonly onEvent?: (message: string) => void;
   /** Called after every event with journal-backed state, e.g. for the terminal view. */
@@ -177,6 +190,18 @@ async function runEventWith(
   const paths = layout(config.storageDir, year);
   const clock = { now };
   let logWrites: Promise<void> = Promise.resolve();
+  // A crash (or a reboot) leaves locks behind; an unattended restart must not stall
+  // on them. Locks of a running process, or of another host, are left in place.
+  for (const [name, remove] of [
+    ["ledger", () => CreditLedger.breakStaleLock(paths.ledger)],
+    ["run-state", () => RunStore.breakStaleLock(paths.runs)],
+  ] as const) {
+    try {
+      if (await remove()) log(`removed a stale ${name} lock left by a process that is not running`);
+    } catch {
+      // Opening below reports the lock.
+    }
+  }
   const ledger = await CreditLedger.open({ directory: paths.ledger, config, now: clock.now });
   let store: RunStore | undefined;
   try {
@@ -249,7 +274,11 @@ async function runEventWith(
         .filter((c) => c !== undefined);
       const solved = part1 === "solved" && part2 === "solved";
       const trouble = [part1, part2].some(
-        (o) => o === "gave-up" || o === "uncertain" || o === "no-subscription",
+        (o) =>
+          o === "gave-up" ||
+          o === "uncertain" ||
+          o === "no-subscription" ||
+          o === "provider-unavailable",
       );
       alert(
         trouble ? "high" : "default",
@@ -264,6 +293,12 @@ async function runEventWith(
      * until a later readiness check passes (e.g. after `boc login`).
      */
     const unavailable = new Map<string, number>();
+    /** Subscriptions whose credential the provider rejected (not merely unreachable). */
+    const rejected = new Set<string>();
+    /** Subscriptions whose last credential check could not reach the provider. */
+    const unreachable = new Set<string>();
+    /** Consecutive outage refusals per subscription, for the backoff. */
+    const outages = new Map<string, number>();
     const credentialOk = async (id: string, when: string): Promise<boolean> => {
       const adapter = adapters.get(id);
       if (!adapter?.checkCredential) return true;
@@ -271,12 +306,26 @@ async function runEventWith(
         await adapter.checkCredential(options.signal);
       } catch (error) {
         options.signal?.throwIfAborted();
-        unavailable.set(id, Number.POSITIVE_INFINITY);
-        const why = error instanceof AdapterError ? error.message : "credential check failed";
-        log(`${when} check FAILED: subscription ${id}: ${why} It is skipped until a check passes.`);
+        const why = error instanceof AdapterError ? error.message : "credential check failed.";
+        if (error instanceof AdapterError && error.failure === "rejected") {
+          unavailable.set(id, Number.POSITIVE_INFINITY);
+          rejected.add(id);
+          log(
+            `${when} check FAILED: subscription ${id}: ${why} It is skipped until a check passes.`,
+          );
+        } else {
+          // An outage is not a dead credential: retry soon instead of skipping the day.
+          unavailable.set(id, now().getTime() + UNREACHABLE_RECHECK_MS);
+          rejected.delete(id);
+          unreachable.add(id);
+          log(
+            `${when} check FAILED: subscription ${id}: ${why} Retrying in ${UNREACHABLE_RECHECK_MS / 60_000} min.`,
+          );
+        }
         return false;
       }
-      if (unavailable.get(id) === Number.POSITIVE_INFINITY) {
+      // Only a check's own verdict is lifted; a usage limit keeps its reset time.
+      if (rejected.delete(id) || unreachable.delete(id)) {
         unavailable.delete(id);
         log(`${when} check: subscription ${id} is usable again`);
       }
@@ -287,7 +336,11 @@ async function runEventWith(
       const failures: string[] = [];
       for (const id of adapters.keys()) {
         if (!(await credentialOk(id, when))) {
-          failures.push(`Subscription ${id}: credential check failed; run boc login.`);
+          failures.push(
+            rejected.has(id)
+              ? `Subscription ${id}: credential rejected; run boc login.`
+              : `Subscription ${id}: provider unreachable; BoC retries automatically.`,
+          );
         }
       }
       if (client.checkSession) {
@@ -350,6 +403,36 @@ async function runEventWith(
         if (!days) break; // Default mode: the event has no further puzzles.
       } else {
         const bound = store;
+        const retryDeadline =
+          Math.max(releaseTime(year, day).getTime(), now().getTime()) + PROVIDER_RETRY_WINDOW_MS;
+        let waitAlerted = false;
+        /** Sleep until a subscription may be usable again, within the retry window. */
+        const waitForSubscription = async (): Promise<boolean> => {
+          const at = now().getTime();
+          const wakes: number[] = [];
+          for (const id of adapters.keys()) {
+            const until = unavailable.get(id);
+            if (until === undefined) continue;
+            if (until === Number.POSITIVE_INFINITY) wakes.push(at + CREDENTIAL_RECHECK_MS);
+            else if (until > at) wakes.push(until);
+          }
+          const wake = Math.min(...wakes);
+          if (wakes.length === 0 || wake > retryDeadline) {
+            if (wakes.length > 0) log(`${puzzle}: provider retry window ends; giving up for now`);
+            return false;
+          }
+          const message = `no subscription is usable now; retrying at ${new Date(wake).toISOString()} (until ${new Date(retryDeadline).toISOString()})`;
+          log(`${puzzle}: ${message}`);
+          if (!waitAlerted) {
+            waitAlerted = true;
+            alert("high", `${puzzle} waiting for providers`, `${message}.`);
+          }
+          await (options.providerSleep ?? sleep)(wake - at, options.signal);
+          for (const id of adapters.keys()) {
+            if (rejected.has(id)) await credentialOk(id, `${puzzle} retry`);
+          }
+          return true;
+        };
         const outcome = await solvePuzzle({
           year,
           puzzle,
@@ -387,12 +470,25 @@ async function runEventWith(
           sleep,
           ...(options.signal ? { signal: options.signal } : {}),
           onEvent: log,
+          waitForSubscription,
+          onProviderAnswered: (id) => {
+            outages.delete(id);
+          },
           onRefusal: async (refusal) => {
+            const count = (outages.get(refusal.subscription) ?? 0) + 1;
+            if (refusal.kind === "outage") outages.set(refusal.subscription, count);
+            const backoff =
+              OUTAGE_BACKOFF_MS[Math.min(count, OUTAGE_BACKOFF_MS.length) - 1] ??
+              OUTAGE_BACKOFF_MS[0];
             const until =
               refusal.kind === "credential"
                 ? Number.POSITIVE_INFINITY
-                : now().getTime() + (refusal.retryAfterMs ?? DEFAULT_REFUSAL_MS);
+                : now().getTime() +
+                  (refusal.kind === "outage"
+                    ? backoff
+                    : (refusal.retryAfterMs ?? DEFAULT_REFUSAL_MS));
             unavailable.set(refusal.subscription, until);
+            if (refusal.kind === "credential") rejected.add(refusal.subscription);
             // A forced refresh may repair an invalidated access token at once.
             if (refusal.kind === "credential") {
               await credentialOk(refusal.subscription, `${puzzle} refusal`);
@@ -401,9 +497,18 @@ async function runEventWith(
               (id) =>
                 id !== refusal.subscription && !((unavailable.get(id) ?? 0) > now().getTime()),
             );
-            const summary = `subscription ${refusal.subscription} unavailable (${refusal.kind === "credential" ? "credential rejected; run boc login" : "usage limit"})${others.length > 0 ? `; failing over to ${others.join(", ")}` : "; no other subscription is available"}`;
+            const reason =
+              refusal.kind === "credential"
+                ? "credential rejected; run boc login"
+                : refusal.kind === "outage"
+                  ? `network or server error; retrying in ${Math.round(backoff / 1000)} s`
+                  : "usage limit";
+            const summary = `subscription ${refusal.subscription} unavailable (${reason})${others.length > 0 ? `; failing over to ${others.join(", ")}` : "; no other subscription is available"}`;
             log(summary);
-            alert("high", `${puzzle} failover`, summary);
+            // A brief outage that clears on the first retry is not worth a page.
+            if (refusal.kind !== "outage" || count > 1 || others.length > 0) {
+              alert("high", `${puzzle} failover`, summary);
+            }
           },
           ...(options.maxAttemptsPerPart ? { maxAttemptsPerPart: options.maxAttemptsPerPart } : {}),
           ...(options.maxTurnsPerAttempt ? { maxTurnsPerAttempt: options.maxTurnsPerAttempt } : {}),
@@ -425,17 +530,17 @@ async function runEventWith(
           break;
         }
         if (outcome.part1 === "provider-unavailable" || outcome.part2 === "provider-unavailable") {
+          // The retry window has passed. Later days may still succeed (checks before
+          // each release can repair credentials), so the run continues.
           log(
-            "stopping: every subscription refused requests; resolve the causes above, then run again",
+            `${puzzle}: every subscription refused requests until the retry window ended; continuing with the next day`,
           );
           alert(
             "urgent",
-            "stopped",
-            `${puzzle}: every subscription refused requests (usage limit or credential). Resolve it (boc login), then run again.`,
+            `${puzzle} abandoned`,
+            `Every subscription refused requests (credential, usage limit, or outage) until the retry window ended. Resolve it (boc login); a later run can retry this day.`,
           );
           notifier.heartbeat(false);
-          await writeViews(paths, bound.state, ledger.status());
-          break;
         }
       }
       await writeViews(paths, store.state, ledger.status());

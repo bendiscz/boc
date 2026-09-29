@@ -4,6 +4,7 @@ import {
   type AssistantMessage,
   type AssistantMessageEventStream,
   createAssistantMessageEventStream,
+  isRetryableAssistantError,
   type Model,
   type ProviderStreams,
   type SimpleStreamOptions,
@@ -96,8 +97,13 @@ export const RUNAWAY_MESSAGES = [CUTOFF_MESSAGE, RESPONSE_TIME_MESSAGE, STALL_ME
 export const USAGE_LIMIT_MESSAGE = "Provider usage limit reached.";
 /** Prefix of a provider credential rejection, as exposed to callers. */
 export const CREDENTIAL_MESSAGE = "Provider rejected the credential; run boc login.";
+/**
+ * Prefix of a transient provider failure (network, TLS, timeout, 5xx), as exposed
+ * to callers. The model did not fail: the provider could not be reached.
+ */
+export const OUTAGE_MESSAGE = "Provider unavailable (network or server error).";
 /** Refusals where retrying now only burns attempts. */
-export const PROVIDER_REFUSALS = [USAGE_LIMIT_MESSAGE, CREDENTIAL_MESSAGE] as const;
+export const PROVIDER_REFUSALS = [USAGE_LIMIT_MESSAGE, CREDENTIAL_MESSAGE, OUTAGE_MESSAGE] as const;
 
 /**
  * Safe description of a provider's terminal error. Raw provider text never leaves
@@ -116,6 +122,10 @@ export function providerErrorMessage(raw: string | undefined): string {
   if (/usage.?limit|rate.?limit|quota|insufficient|\b429\b|too many requests/i.test(text)) {
     const minutes = /try again in ~?(\d{1,5}) ?min/i.exec(text)?.[1];
     return `${USAGE_LIMIT_MESSAGE}${minutes ? ` Retry in about ${Number(minutes)} min.` : ""}`;
+  }
+  // pi-ai's own classifier of transient provider and transport failures.
+  if (isRetryableAssistantError({ stopReason: "error", errorMessage: text } as AssistantMessage)) {
+    return OUTAGE_MESSAGE;
   }
   return "Provider returned an error; any unresolved reservation remains held.";
 }

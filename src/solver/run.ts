@@ -7,6 +7,7 @@ import { LedgerError } from "../budget/ledger.ts";
 import {
   type Admission,
   createGuardedStreams,
+  OUTAGE_MESSAGE,
   PROVIDER_REFUSALS,
   RUNAWAY_MESSAGES,
   USAGE_LIMIT_MESSAGE,
@@ -53,7 +54,9 @@ export interface SolveOptions {
   readonly executor: Executor;
   /**
    * Chooses the subscription/model for the next attempt, or undefined if none can
-   * run. `exclude` holds subscriptions that refused during this part.
+   * run. `exclude` holds subscriptions that must not be offered now: those that
+   * refused since the part last ran out of subscriptions, and those whose credits
+   * ran out during an attempt of this part.
    */
   readonly binding: (
     part: PartNumber,
@@ -73,16 +76,25 @@ export interface SolveOptions {
   readonly signal?: AbortSignal;
   readonly onEvent?: (message: string) => void;
   /**
-   * A provider refused a subscription's requests (usage limit or rejected
-   * credential). The binding should stop offering it; the part then fails over to
-   * the next subscription. `retryAfterMs` is the provider's announced reset, if any.
+   * A provider refused a subscription's requests (usage limit, rejected credential,
+   * or an outage: network or server error). The binding should stop offering it for
+   * a while; the part then fails over to the next subscription. `retryAfterMs` is the
+   * provider's announced reset, if any.
    */
   readonly onRefusal?: (refusal: ProviderRefusal) => void | Promise<void>;
+  /** An attempt on this subscription ended without a provider refusal. */
+  readonly onProviderAnswered?: (subscription: string) => void;
+  /**
+   * No subscription can run an attempt now. Wait until one may become usable and
+   * resolve true, or resolve false (without waiting) when none can before the
+   * part's retry deadline. Every true result must follow a real wait.
+   */
+  readonly waitForSubscription?: () => Promise<boolean>;
 }
 
 export interface ProviderRefusal {
   readonly subscription: string;
-  readonly kind: "usage-limit" | "credential";
+  readonly kind: "usage-limit" | "credential" | "outage";
   readonly retryAfterMs: number | undefined;
 }
 
@@ -94,7 +106,7 @@ export type PartOutcome =
   /** Part 2 offers no answer form (the final day before every other star is earned). */
   | "needs-stars"
   | "provider-fault"
-  /** The provider refused requests (usage limit, rejected credential); attempts are kept. */
+  /** Providers refused requests (usage limit, credential, outage) until the retry deadline. */
   | "provider-unavailable"
   | "no-subscription";
 
@@ -114,8 +126,13 @@ export async function solvePart(options: SolveOptions, part: PartNumber): Promis
     throw new Error("maxAttemptsPerPart must be an integer from 1 to 999.");
   }
   const log = (message: string) => options.onEvent?.(`${puzzle} part ${part}: ${message}`);
-  /** Subscriptions that refused during this part; never retried within it. */
-  const refused = new Set<string>();
+  /**
+   * Subscriptions not offered for this part. `refused` is cleared when no other
+   * subscription is left, so the binding (which knows when an outage or usage limit
+   * ends, or whether a credential was repaired) decides again; each clear follows a
+   * real refusal, so this cannot spin. `exhausted` lasts for the part.
+   */
+  const excluded = { refused: new Set<string>(), exhausted: new Set<string>(), refusals: 0 };
 
   for (;;) {
     options.signal?.throwIfAborted();
@@ -179,11 +196,18 @@ export async function solvePart(options: SolveOptions, part: PartNumber): Promis
             break;
           }
         }
-        const outcome = await runAttempt(options, part, log, refused);
+        const outcome = await runAttempt(options, part, log, excluded);
         if (outcome === "provider-unavailable") break; // Fail over to the next subscription.
-        if (outcome === "no-subscription" && refused.size > 0) {
-          log("every eligible subscription refused requests");
-          return "provider-unavailable";
+        if (outcome === "no-subscription") {
+          if (excluded.refused.size > 0) {
+            excluded.refused.clear();
+            break;
+          }
+          if (await options.waitForSubscription?.()) break;
+          if (excluded.refusals > 0) {
+            log("every eligible subscription refused requests");
+            return "provider-unavailable";
+          }
         }
         if (outcome) return outcome;
         break;
@@ -237,13 +261,14 @@ async function runAttempt(
   options: SolveOptions,
   part: PartNumber,
   log: (message: string) => void,
-  refused: Set<string>,
+  excluded: { refused: Set<string>; exhausted: Set<string>; refusals: number },
 ): Promise<PartOutcome | undefined> {
   const { store, aoc, puzzle, paths } = options;
   const before = store.state.puzzles[puzzle]?.parts[part];
   const attempt = (before?.attempts ?? 0) + 1;
-  const offered = options.binding(part, attempt, refused);
-  const binding = offered && !refused.has(offered.subscription) ? offered : undefined;
+  const exclude = new Set([...excluded.refused, ...excluded.exhausted]);
+  const offered = options.binding(part, attempt, exclude);
+  const binding = offered && !exclude.has(offered.subscription) ? offered : undefined;
   if (!binding) {
     log("no eligible subscription");
     return "no-subscription";
@@ -395,16 +420,25 @@ async function runAttempt(
       log(`attempt ${attempt}: provider outcome uncertain (reservation held); stopping`);
       return "provider-fault";
     }
+    options.onProviderAnswered?.(binding.subscription);
     return undefined;
   }
   if (options.signal?.aborted) {
     await store.record({ ...where, outcome: "interrupted" });
     options.signal.throwIfAborted();
   }
+  if (faulted) {
+    await store.record({ ...where, outcome: "failed" });
+    log(`attempt ${attempt} stopped: provider outcome uncertain (reservation held)`);
+    return "provider-fault";
+  }
   if (denied) {
+    // The attempt counts; the part fails over to a subscription that has credits.
     await store.record({ ...where, outcome: "budget-exhausted" });
-    log(`attempt ${attempt} stopped: credits exhausted`);
-    return "gave-up";
+    excluded.exhausted.add(binding.subscription);
+    log(`attempt ${attempt} stopped: credits exhausted on ${binding.subscription}`);
+    options.onProviderAnswered?.(binding.subscription);
+    return undefined;
   }
   const limited = agent.state.messages.findLast(
     (m) =>
@@ -417,20 +451,23 @@ async function runAttempt(
     await store.record({ ...where, outcome: "refused" });
     const message = limited.errorMessage ?? "";
     const minutes = /Retry in about (\d+) min/.exec(message)?.[1];
-    refused.add(binding.subscription);
+    const kind = message.startsWith(USAGE_LIMIT_MESSAGE)
+      ? "usage-limit"
+      : message.startsWith(OUTAGE_MESSAGE)
+        ? "outage"
+        : "credential";
+    excluded.refused.add(binding.subscription);
+    excluded.refusals++;
     log(`attempt ${attempt} refused by ${binding.subscription}: ${message}`);
     await options.onRefusal?.({
       subscription: binding.subscription,
-      kind: message.startsWith(USAGE_LIMIT_MESSAGE) ? "usage-limit" : "credential",
+      kind,
       retryAfterMs: minutes === undefined ? undefined : Number(minutes) * 60_000,
     });
     return "provider-unavailable";
   }
   await store.record({ ...where, outcome: "failed" });
-  if (faulted) {
-    log(`attempt ${attempt} stopped: provider outcome uncertain (reservation held)`);
-    return "provider-fault";
-  }
+  options.onProviderAnswered?.(binding.subscription);
   log(`attempt ${attempt} ended without an answer${agentError ? " (error)" : ""}`);
   return undefined;
 }

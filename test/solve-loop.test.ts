@@ -153,7 +153,7 @@ async function fixture(
       onEvent: (e) => events.push(e),
       ...options.solve,
     });
-  return { root, paths, store, ledger, aocCalls, prompts, sleeps, events, solve };
+  return { root, paths, store, ledger, aocCalls, prompts, sleeps, events, solve, binding };
 }
 
 test("statement text keeps code blocks, emphasis, and decoded entities", () => {
@@ -213,16 +213,18 @@ test("a puzzle is solved end to end: retry after a wrong answer, cooldown, then 
   assert.equal(pool?.reserved, 0n);
 });
 
-test("credit exhaustion gives up the part without submitting", async (t) => {
+test("credit exhaustion ends the attempt and excludes the subscription, not the part", async (t) => {
   const f = await fixture(t, {
     perPuzzle: "2",
     aoc: [page(1, [], 1)],
     model: Array.from({ length: 5 }, () => () => tool("list_files", {})),
   });
-  assert.deepEqual(await f.solve(), { part1: "gave-up", part2: undefined });
+  assert.deepEqual(await f.solve(), { part1: "no-subscription", part2: undefined });
   const part = f.store.state.puzzles["day-01"]?.parts[1];
-  assert.equal(part?.status, "gave-up");
-  assert.equal(part?.gaveUpReason, "budget-exhausted");
+  assert.equal(part?.status, "ready", "another subscription or a later run can continue");
+  assert.equal(part?.attempts, 1, "the exhausted attempt counts");
+  assert.equal(part?.refusedAttempts, 0);
+  assert.ok(f.events.some((e) => /attempt 1 stopped: credits exhausted on sub/.test(e)));
   assert.ok(f.aocCalls.every((c) => !c.startsWith("answer")));
 });
 
@@ -380,8 +382,23 @@ test("a provider usage limit stops the part after one attempt, keeping the rest"
     errorMessage:
       'You have hit your ChatGPT usage limit (business plan). Try again in ~42 min. {"prompt":"secret"}',
   });
-  const f = await fixture(t, { aoc: [page(1, [], 1)], model: [() => limit, () => limit] });
-  assert.deepEqual(await f.solve(), { part1: "provider-unavailable", part2: undefined });
+  let limited = false;
+  const f = await fixture(t, {
+    aoc: [page(1, [], 1)],
+    model: [() => limit, () => limit],
+    solve: {
+      onRefusal: (r) => {
+        assert.equal(r.kind, "usage-limit");
+        assert.equal(r.retryAfterMs, 42 * 60_000);
+        limited = true;
+      },
+    },
+  });
+  // Like the run's binding: a limited subscription is not offered until its reset.
+  assert.deepEqual(await f.solve(() => (limited ? undefined : f.binding())), {
+    part1: "provider-unavailable",
+    part2: undefined,
+  });
   const part = f.store.state.puzzles["day-01"]?.parts[1];
   assert.equal(part?.attempts, 1);
   assert.equal(part?.refusedAttempts, 1, "a refusal is not counted as a model attempt");

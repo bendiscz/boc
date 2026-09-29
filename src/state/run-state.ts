@@ -18,8 +18,8 @@ import { Journal, JournalError } from "./journal.ts";
  * Part lifecycle:
  *
  *   locked ──statement──▶ ready ──attempt-started──▶ solving
- *   solving ──finished(answer)──▶ proposed; (failed|interrupted)──▶ ready;
- *           (budget-exhausted)──▶ gave-up
+ *   solving ──finished(answer)──▶ proposed;
+ *           (failed|interrupted|refused|budget-exhausted)──▶ ready
  *   proposed ──submission-started (write-ahead, before HTTP)──▶ submitting
  *   submitting ──correct──▶ solved; incorrect/too-high/too-low──▶ ready;
  *              cooldown/not-sent (not judged)──▶ proposed; uncertain──▶ uncertain
@@ -310,10 +310,9 @@ export function transition(state: RunState, record: RunRecord): RunState {
       } else if (record.outcome === "refused") {
         next.status = "ready";
         next.refusedAttempts = before.refusedAttempts + 1;
-      } else if (record.outcome === "budget-exhausted") {
-        next.status = "gave-up";
-        next.gaveUpReason = "budget-exhausted";
       } else {
+        // `budget-exhausted` counts as an attempt; the part fails over (the solve loop
+        // excludes that subscription) and gives up only through `part-gave-up`.
         next.status = "ready";
       }
       break;
@@ -480,8 +479,8 @@ export class RunStore {
 
   /** Read-only view without the lock; interrupted work is shown as-is, not recovered. */
   /** See `Journal.breakStaleLock`. */
-  static async breakStaleLock(directory: string): Promise<void> {
-    await Journal.breakStaleLock(directory);
+  static async breakStaleLock(directory: string): Promise<boolean> {
+    return await Journal.breakStaleLock(directory);
   }
 
   static async inspect(options: Omit<RunStoreOptions, "now">): Promise<RunState> {

@@ -27,11 +27,35 @@ import type { ProviderAdapter } from "./adapter.ts";
 
 type Subscription = BocConfig["subscriptions"][number];
 
+/**
+ * `rejected`: the provider refused the credential (run boc login). `unreachable`:
+ * the credential could not be verified because the provider did not answer
+ * properly (network, TLS, timeout, 5xx); retrying later may succeed.
+ */
+export type CredentialFailure = "rejected" | "unreachable";
+
 export class AdapterError extends Error {
-  constructor(message: string) {
+  readonly failure: CredentialFailure | undefined;
+  constructor(message: string, failure?: CredentialFailure) {
     super(message);
     this.name = "AdapterError";
+    this.failure = failure;
   }
+}
+
+/**
+ * Classify a failed token refresh from pi-ai's error text (never shown). Only an
+ * explicit authorization refusal counts as `rejected`; everything else (network
+ * errors, timeouts, 5xx, malformed replies) is `unreachable`, so that an outage is
+ * retried rather than treated as a dead credential.
+ */
+export function refreshFailure(error: unknown): CredentialFailure {
+  const text = error instanceof Error ? error.message : String(error);
+  return /^(400|401|403)\b|\((400|401|403)\)|invalid_grant|unauthori[sz]ed|bad credentials/i.test(
+    text,
+  )
+    ? "rejected"
+    : "unreachable";
 }
 
 /** Refresh when the access token expires within this window. */
@@ -103,8 +127,14 @@ export async function createOAuthAdapter(options: OAuthAdapterOptions): Promise<
         await writeFileAtomic(path, `${JSON.stringify(next)}\n`);
         credential = next;
         return next;
-      } catch {
-        throw new AdapterError(`${label} token refresh failed; run boc login if this persists.`);
+      } catch (error) {
+        const failure = refreshFailure(error);
+        throw new AdapterError(
+          failure === "rejected"
+            ? `${label} rejected the credential; run boc login.`
+            : `${label} could not be reached to verify the credential (network or server error).`,
+          failure,
+        );
       } finally {
         refreshing = undefined;
       }
@@ -131,8 +161,10 @@ export async function createOAuthAdapter(options: OAuthAdapterOptions): Promise<
         );
         for await (const event of upstream) output.push(event);
         output.end();
-      } catch {
+      } catch (error) {
         // No request was answered: report a sanitized error terminal (never the token).
+        // The text carries the refresh failure's category for the guard's classifier.
+        const failure = error instanceof AdapterError ? error.failure : undefined;
         output.push({
           type: "error",
           reason: signal.aborted ? "aborted" : "error",
@@ -151,7 +183,12 @@ export async function createOAuthAdapter(options: OAuthAdapterOptions): Promise<
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
             },
             stopReason: signal.aborted ? "aborted" : "error",
-            errorMessage: `${label} request failed before a response.`,
+            errorMessage:
+              failure === "rejected"
+                ? `${label} credential rejected (401) before a response.`
+                : failure === "unreachable"
+                  ? `${label} request failed before a response: connection error.`
+                  : `${label} request failed before a response.`,
             timestamp: now(),
           },
         });

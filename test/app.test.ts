@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { hostname, tmpdir, uptime } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
@@ -14,6 +15,8 @@ import { parseConfig } from "../src/config.ts";
 import type { ProviderAdapter } from "../src/providers/adapter.ts";
 import { AdapterError } from "../src/providers/oauth-adapter.ts";
 import type { Executor } from "../src/sandbox/executor.ts";
+import { LOCK_FILE } from "../src/state/journal.ts";
+import { layout } from "../src/state/layout.ts";
 import { FAKE_MODEL, message, responseStream } from "./support/fake-pi.ts";
 
 // Synthetic pages only.
@@ -240,6 +243,12 @@ interface FirstBehavior {
   /** Whether the first subscription's next model call is refused (credential). */
   refuses: () => boolean;
   checkCredential?: () => Promise<void>;
+  /** Whether a subscription's next model call fails with a connection error. */
+  outage?: (name: "first" | "second") => boolean;
+  /** Per-puzzle credit limit of the first subscription (default 20). */
+  firstPerPuzzle?: string;
+  /** Tool calls the first subscription makes before proposing (default 0). */
+  firstTurns?: number;
 }
 
 async function twoSubscriptions(t: test.TestContext, first: FirstBehavior) {
@@ -267,7 +276,7 @@ async function twoSubscriptions(t: test.TestContext, first: FirstBehavior) {
         credentialFile: join(root, "a"),
         model: FAKE_MODEL.id,
         creditPool: "pool-a",
-        limits,
+        limits: { ...limits, perPuzzle: first.firstPerPuzzle ?? limits.perPuzzle },
         estimate,
       },
       {
@@ -304,6 +313,20 @@ async function twoSubscriptions(t: test.TestContext, first: FirstBehavior) {
   const adapter = (name: "first" | "second"): ProviderAdapter => {
     const invoke = (_m: unknown, context: TranscriptContext) => {
       calls[name]++;
+      if (first.outage?.(name)) {
+        return responseStream(
+          message({ content: [], stopReason: "error", errorMessage: "Connection error." }),
+        );
+      }
+      const turns = context.messages.filter((m) => m.role === "assistant").length;
+      if (name === "first" && turns < (first.firstTurns ?? 0)) {
+        return responseStream(
+          message({
+            content: [{ type: "toolCall", id: `l${turns}`, name: "list_files", arguments: {} }],
+            stopReason: "toolUse",
+          }),
+        );
+      }
       if (name === "first" && first.refuses()) {
         return responseStream(
           message({
@@ -327,7 +350,11 @@ async function twoSubscriptions(t: test.TestContext, first: FirstBehavior) {
       transport: { stream: invoke, streamSimple: invoke },
       meter: {
         maxCharge: () => parseCredits("1"),
-        actualCharge: async () => ({ credits: parseCredits("1"), receipt: "receipt:fake" }),
+        // Like the real adapters: a call that failed before any output costs nothing.
+        actualCharge: async (m: { stopReason: string }) => ({
+          credits: parseCredits(m.stopReason === "error" ? "0" : "1"),
+          receipt: "receipt:fake",
+        }),
       },
       minimumAttemptCredits: parseCredits("1"),
       ...(name === "first" && first.checkCredential
@@ -370,6 +397,8 @@ async function twoSubscriptions(t: test.TestContext, first: FirstBehavior) {
     calls,
     events,
     aocCalls,
+    config,
+    now: () => clock,
     setClock: (iso: string) => {
       clock = Date.parse(iso);
     },
@@ -404,7 +433,7 @@ test("a failed start check skips the subscription with no model call", async (t)
   const f = await twoSubscriptions(t, {
     refuses: () => false,
     checkCredential: async () => {
-      throw new AdapterError("Copilot token refresh failed; run boc login if this persists.");
+      throw new AdapterError("Copilot rejected the credential; run boc login.", "rejected");
     },
   });
   const results = await f.run();
@@ -412,7 +441,7 @@ test("a failed start check skips the subscription with no model call", async (t)
   assert.equal(f.calls.first, 0);
   assert.ok(
     f.events.some((e) =>
-      /start check FAILED: subscription first: Copilot token refresh failed/.test(e),
+      /start check FAILED: subscription first: Copilot rejected the credential/.test(e),
     ),
   );
   assert.ok(f.aocCalls[0]?.startsWith("session"), "the AoC session is checked at start");
@@ -441,7 +470,7 @@ test("readiness is checked 30 minutes before a release, and rechecked after a fa
     checkCredential: async () => {
       // Fails at start and at T-30; the operator's boc login fixes it before T-5.
       if (++credentialChecks <= 2) {
-        throw new AdapterError("Copilot token refresh failed; run boc login if this persists.");
+        throw new AdapterError("Copilot rejected the credential; run boc login.", "rejected");
       }
     },
   });
@@ -490,7 +519,7 @@ test("the run alerts on failed checks, failover, and each finished day", async (
   const f = await twoSubscriptions(t, {
     refuses: () => false,
     checkCredential: async () => {
-      throw new AdapterError("Copilot token refresh failed; run boc login if this persists.");
+      throw new AdapterError("Copilot rejected the credential; run boc login.", "rejected");
     },
   });
   const r = recordingNotifier();
@@ -501,7 +530,7 @@ test("the run alerts on failed checks, failover, and each finished day", async (
   assert.equal(check?.title, "BoC 2025: start check failed");
   assert.match(
     check?.message ?? "",
-    /Subscription first: credential check failed; run boc login\.\nStill usable: second\./,
+    /Subscription first: credential rejected; run boc login\.\nStill usable: second\./,
   );
   assert.equal(started?.title, "BoC 2025: started");
   assert.equal(day1?.title, "BoC 2025: day-01 solved");
@@ -530,4 +559,128 @@ test("a refusal alerts as a failover; a preflight error alerts as a stop", async
   assert.equal(s.alerts.at(-1)?.title, "BoC 2025: stopped with an error");
   assert.match(s.alerts.at(-1)?.message ?? "", /No eligible provider adapter/);
   assert.deepEqual(s.heartbeats, [false]);
+});
+
+test("an outage fails over without counting an attempt, then backs off", async (t) => {
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    outage: (name) => name === "first",
+  });
+  const results = await f.run({ days: [1] });
+  assert.deepEqual(
+    results.map((r) => [r.part1, r.part2]),
+    [["solved", "solved"]],
+    "an attempt cap of 1 still leaves room: an outage is not an attempt",
+  );
+  assert.equal(f.calls.first, 1, "the backoff keeps the failed subscription out");
+  assert.ok(
+    f.events.some((e) =>
+      /subscription first unavailable \(network or server error; retrying in 15 s\); failing over to second/.test(
+        e,
+      ),
+    ),
+  );
+  assert.ok(
+    f.events.every((e) => !/Connection error/.test(e)),
+    "no raw provider text",
+  );
+});
+
+test("when every subscription is out, the part waits with backoff and then solves", async (t) => {
+  let failures = 4; // Two outages on each subscription, then recovery.
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    outage: () => failures-- > 0,
+  });
+  const r = recordingNotifier();
+  const start = f.now();
+  const results = await f.run({ days: [1], notifier: r.notifier });
+  assert.deepEqual(
+    results.map((x) => [x.part1, x.part2]),
+    [["solved", "solved"]],
+  );
+  const waits = f.events.filter((e) => /no subscription is usable now; retrying at/.test(e));
+  assert.equal(waits.length, 2);
+  assert.ok(
+    f.events.some((e) => /retrying in 30 s/.test(e)),
+    "the backoff grows",
+  );
+  assert.ok(f.now() - start >= 30_000);
+  assert.equal(
+    r.alerts.filter((a) => /waiting for providers/.test(a.title)).length,
+    1,
+    "one alert per part",
+  );
+});
+
+test("a persistent outage is retried until 6 hours after release, then the run moves on", async (t) => {
+  const f = await twoSubscriptions(t, { refuses: () => false, outage: () => true });
+  f.setClock("2025-12-01T04:00:00.000Z");
+  const r = recordingNotifier();
+  const results = await f.run({ days: [1, 2], notifier: r.notifier });
+  assert.deepEqual(
+    results.map((x) => [x.part1, x.part2]),
+    [
+      ["provider-unavailable", undefined],
+      ["provider-unavailable", undefined],
+    ],
+    "the run continued with day 2",
+  );
+  const giveUp = f.events.find((e) => /day-01: provider retry window ends/.test(e)) ?? "";
+  assert.ok(giveUp >= "2025-12-01T10:55:00.000Z" && giveUp <= "2025-12-01T11:00:00.000Z", giveUp);
+  assert.ok(f.calls.first + f.calls.second < 400, "retries are bounded by the backoff");
+  assert.ok(r.alerts.some((a) => a.title === "BoC 2025: day-01 abandoned"));
+});
+
+test("an unreachable start check is retried soon instead of skipping the day", async (t) => {
+  let checks = 0;
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    checkCredential: async () => {
+      if (++checks === 1) throw new AdapterError("Copilot could not be reached.", "unreachable");
+    },
+  });
+  f.setClock("2025-12-01T04:58:00.000Z"); // After the pre-release checks.
+  const results = await f.run({ days: [1] });
+  assert.equal(results[0]?.part2, "solved");
+  assert.ok(
+    f.events.some((e) => /start check FAILED: subscription first: .*Retrying in 1 min/.test(e)),
+  );
+  assert.equal(f.calls.second, 0, "the first subscription was usable again at release");
+  assert.equal(f.calls.first, 2);
+});
+
+test("credits running out mid-attempt fail over to another subscription", async (t) => {
+  const f = await twoSubscriptions(t, {
+    refuses: () => false,
+    firstPerPuzzle: "1",
+    firstTurns: 1,
+  });
+  const results = await f.run({ days: [1], maxAttemptsPerPart: 2 });
+  assert.deepEqual(
+    results.map((x) => [x.part1, x.part2]),
+    [["solved", "solved"]],
+  );
+  assert.ok(f.events.some((e) => /attempt 1 stopped: credits exhausted on first/.test(e)));
+  assert.ok(f.events.some((e) => /day-01 part 1: attempt 2 started \(second\)/.test(e)));
+});
+
+test("a stale lock from a dead process or an earlier boot is removed at start", async (t) => {
+  const f = await twoSubscriptions(t, { refuses: () => false });
+  const paths = layout(f.config.storageDir, 2025);
+  await f.run({ days: [1] }); // Creates the journals.
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+  const boot = Math.round(Date.now() / 1000 - uptime());
+  const lock = (pid: number, bootTime: number) =>
+    `${JSON.stringify({ pid, host: hostname(), boot: bootTime, at: new Date().toISOString() })}\n`;
+  await writeFile(join(paths.ledger, LOCK_FILE), lock(dead, boot), { mode: 0o600 });
+  await writeFile(join(paths.runs, LOCK_FILE), lock(process.pid, boot - 3600), { mode: 0o600 });
+  await f.run({ days: [2] });
+  assert.equal(f.events.filter((e) => /removed a stale (ledger|run-state) lock/.test(e)).length, 2);
+  // A lock whose owner runs (this process, same boot) is kept and explained.
+  await writeFile(join(paths.ledger, LOCK_FILE), lock(process.pid, boot), { mode: 0o600 });
+  await assert.rejects(
+    f.run({ days: [2] }),
+    /Locked by another process \(PID \d+\)\. If no BoC process is running, run boc ledger break-lock/,
+  );
 });

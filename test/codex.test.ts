@@ -15,6 +15,7 @@ import { tokenCost } from "../src/budget/credits.ts";
 import { parseConfig } from "../src/config.ts";
 import { CALIBRATION_ADAPTERS, PRODUCTION_ADAPTERS } from "../src/providers/adapter.ts";
 import { loginSubscription } from "../src/providers/login.ts";
+import { type AdapterError, refreshFailure } from "../src/providers/oauth-adapter.ts";
 import { createCodexAdapter } from "../src/providers/openai-codex.ts";
 import { message, responseStream } from "./support/fake-pi.ts";
 
@@ -288,9 +289,40 @@ test("the credential check forces a refresh, persists it, and reports failure sa
   const stored = JSON.parse(await readFile(f.credentialFile, "utf8")) as { access: string };
   assert.equal(stored.access, "synthetic-access-1", "the rotated credential is persisted");
   fail = true;
-  await assert.rejects(adapter.checkCredential(), (error: Error) => {
-    assert.match(error.message, /token refresh failed; run boc login/);
+  await assert.rejects(adapter.checkCredential(), (error: AdapterError) => {
+    assert.match(error.message, /could not be reached to verify the credential/);
+    assert.equal(error.failure, "unreachable", "an unclassified failure is retried, not fatal");
     assert.doesNotMatch(error.message, /synthetic-secret/);
     return true;
   });
+  oauth.refresh = async () => {
+    throw new Error("OpenAI Codex token refresh failed (401): synthetic-secret invalid_grant");
+  };
+  await assert.rejects(adapter.checkCredential(), (error: AdapterError) => {
+    assert.match(error.message, /rejected the credential; run boc login/);
+    assert.equal(error.failure, "rejected");
+    assert.doesNotMatch(error.message, /synthetic-secret/);
+    return true;
+  });
+});
+
+test("refresh failures are rejected only on an explicit authorization refusal", () => {
+  for (const text of [
+    "401 Unauthorized: synthetic",
+    "403 Forbidden: synthetic",
+    "OpenAI Codex token refresh failed (400): invalid_grant",
+    "OpenAI Codex token refresh failed (401): synthetic",
+  ]) {
+    assert.equal(refreshFailure(new Error(text)), "rejected", text);
+  }
+  for (const text of [
+    "fetch failed",
+    "OpenAI Codex token refresh error: fetch failed",
+    "502 Bad Gateway: synthetic",
+    "OpenAI Codex token refresh failed (503): synthetic",
+    "Invalid Copilot token response fields",
+    "The operation was aborted due to timeout",
+  ]) {
+    assert.equal(refreshFailure(new Error(text)), "unreachable", text);
+  }
 });

@@ -389,9 +389,9 @@ export class CreditLedger {
   }
 
   /** See `Journal.breakStaleLock`. */
-  static async breakStaleLock(directory: string): Promise<void> {
+  static async breakStaleLock(directory: string): Promise<boolean> {
     try {
-      await Journal.breakStaleLock(directory);
+      return await Journal.breakStaleLock(directory);
     } catch (error) {
       throw toLedgerError(error);
     }

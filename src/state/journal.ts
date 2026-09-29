@@ -1,5 +1,5 @@
 import { type FileHandle, mkdir, open, readFile, unlink } from "node:fs/promises";
-import { hostname } from "node:os";
+import { hostname, uptime } from "node:os";
 import { dirname, join } from "node:path";
 import type { z } from "zod";
 
@@ -99,31 +99,38 @@ export class Journal<R extends JournalRecord> {
   }
 
   /**
-   * Remove a lock left by a dead process on this host. Refuses when the owner may
-   * still be alive or belongs to another host; PID reuse errs on the side of refusal
-   * (the operator may then remove the lock manually after review).
+   * Remove a lock left by a dead process on this host: the host booted since the
+   * lock was taken, or its PID no longer exists. Returns whether a lock was
+   * removed. Refuses when the owner may still be alive or belongs to another host;
+   * PID reuse within one boot errs on the side of refusal (the operator may then
+   * remove the lock manually after review).
    */
-  static async breakStaleLock(directory: string): Promise<void> {
-    let owner: { pid?: unknown; host?: unknown };
+  static async breakStaleLock(directory: string): Promise<boolean> {
+    let owner: { pid?: unknown; host?: unknown; boot?: unknown };
     try {
       owner = JSON.parse(await readFile(join(directory, LOCK_FILE), "utf8"));
     } catch (error) {
-      if (isNotFound(error)) return;
+      if (isNotFound(error)) return false;
       throw new JournalError("locked", "Lock is unreadable; remove it manually after review.");
     }
     if (owner.host !== hostname() || typeof owner.pid !== "number") {
       throw new JournalError("locked", "Lock belongs to another host or is malformed.");
     }
-    try {
-      process.kill(owner.pid, 0);
-      throw new JournalError("locked", "Lock owner is still running.");
-    } catch (error) {
-      if (error instanceof JournalError) throw error;
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
-        throw new JournalError("locked", "Cannot determine whether the lock owner is running.");
+    const rebooted =
+      typeof owner.boot === "number" && Math.abs(owner.boot - bootTime()) > BOOT_TOLERANCE_S;
+    if (!rebooted) {
+      try {
+        process.kill(owner.pid, 0);
+        throw new JournalError("locked", "Lock owner is still running.");
+      } catch (error) {
+        if (error instanceof JournalError) throw error;
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+          throw new JournalError("locked", "Cannot determine whether the lock owner is running.");
+        }
       }
     }
     await unlink(join(directory, LOCK_FILE));
+    return true;
   }
 
   get faulted(): boolean {
@@ -243,16 +250,33 @@ function parseRecords<R extends JournalRecord>(content: string, schema: z.ZodTyp
   return records;
 }
 
+/** Boot times computed from uptime drift slightly; a reboot moves them far more. */
+const BOOT_TOLERANCE_S = 120;
+
+/** This host's boot time in epoch seconds (approximate). */
+function bootTime(): number {
+  return Math.round(Date.now() / 1000 - uptime());
+}
+
 async function acquireLock(directory: string): Promise<void> {
   let handle: FileHandle;
   try {
     handle = await open(join(directory, LOCK_FILE), "wx", 0o600);
   } catch {
-    throw new JournalError("locked", "Locked by another process.");
+    let pid: unknown;
+    try {
+      pid = JSON.parse(await readFile(join(directory, LOCK_FILE), "utf8")).pid;
+    } catch {
+      // Unreadable: reported generically below.
+    }
+    throw new JournalError(
+      "locked",
+      `Locked by another process${typeof pid === "number" ? ` (PID ${pid})` : ""}. If no BoC process is running, run boc ledger break-lock after review.`,
+    );
   }
   try {
     await handle.writeFile(
-      `${JSON.stringify({ pid: process.pid, host: hostname(), at: new Date().toISOString() })}\n`,
+      `${JSON.stringify({ pid: process.pid, host: hostname(), boot: bootTime(), at: new Date().toISOString() })}\n`,
     );
     await handle.sync();
   } finally {
