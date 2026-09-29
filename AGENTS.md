@@ -30,7 +30,7 @@ Read `README.md`, `docs/REQUIREMENTS.md`, and `docs/PLAN.md` before continuing w
 
 ## Current stage
 
-BoC works end to end and is prepared for AoC 2026. The two production adapters, GitHub Copilot and ChatGPT/Codex, are calibrated. `gpt-6-sol` solved all of AoC 2025 and AoC 2024 days 1–24 (plus day 25 part 1) on the first submission. BoC has failover (D021), readiness checks (D022), alerts (D023), outage handling (D024), AoC resilience (D025), and a one-time resubmission after an unknown submission outcome (D026). A private event config exists, and the Raspberry Pi deployment (D027, `deploy/rpi/`) is ready to set up. The architecture is recorded in `docs/DECISIONS.md` (D001–D030). The current state and the next task are in `docs/PLAN.md` under "Next session: start here".
+BoC works end to end and is prepared for AoC 2026. The two production adapters, GitHub Copilot and ChatGPT/Codex, are calibrated. `gpt-6-sol` solved all of AoC 2025 and AoC 2024 days 1–24 (plus day 25 part 1) on the first submission. BoC has failover (D021), readiness checks (D022), alerts (D023), outage handling (D024), AoC resilience (D025), and a one-time resubmission after an unknown submission outcome (D026). A private event config exists, and the Raspberry Pi deployment (D027, `deploy/rpi/`) is ready to set up. The architecture is recorded in `docs/DECISIONS.md` (D001–D031). The current state and the next task are in `docs/PLAN.md` under "Next session: start here".
 
 Run `npm ci --ignore-scripts` and `npm run check`. Read `docs/OPERATOR.md`, `docs/CONFIGURATION.md`, `docs/FEASIBILITY.md`, `docs/AOC.md`, `docs/SANDBOX.md`, `docs/EVALUATION.md`, and `docs/RPI.md` alongside the plan before continuing.
 

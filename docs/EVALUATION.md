@@ -227,3 +227,19 @@ The same replay as the Pi benchmark above (2019 days 12, 16, 18, 20, 22, and 24;
 - **Credits:** about 10% fewer, because there are fewer turns that resend the context.
 - **Conclusion:** accuracy was unchanged, and time and credits were modestly lower. Almost all of the remaining time is the model's own generation, so further gains would have to come from the model side (for example its reasoning setting), measured the same way.
 
+## Reasoning effort (D031): Pi replay (2026-09-30)
+
+The same six 2019 days on the Pi with Copilot (`gpt-6-sol`), on the D030 code, one run per level in fresh storage (`var/bench/pi-2019-r-*`). The reasoning configs set `assumedMaxOutputTokens` to 32000. The baseline is the provider-default run `pi-2019-fast`.
+
+| Effort | Correct (first submission) | Total / median time per part | Model turns per attempt | Output / reasoning tokens | Copilot credits |
+| --- | --- | --- | --- | --- | --- |
+| default (unset) | 12/12 | 174 s / 12.0 s | 2.25 | 10660 / 1457 | 23.91 |
+| **low** | 12/12 | **130 s / 11.1 s** | 2.08 | 8084 / 508 | **20.23** |
+| medium | 12/12 | 158 s / 11.0 s | 2.58 | 10944 / 1795 | 24.54 |
+| high | 12/12 | 200 s / 14.3 s | 2.33 | 12810 / 2643 | 26.61 |
+
+- **The parameter takes effect:** reasoning tokens rise with the effort, and the default sits between `low` and `medium`.
+- **Time and cost:** `low` was the fastest (25% below the default in total) and the cheapest (15% fewer credits). `high` was the slowest. The spread comes mostly from a few parts (day 18 part 1: 15 s at `low`, 36 s at `medium` and `high`).
+- **Accuracy:** no difference, because every level solved all 12 parts. **These days are not hard enough to show what reasoning buys**: any accuracy gain from more effort would appear on the hardest parts, where BoC has needed several attempts or long responses. With one sample per part, per-part times are noisy.
+- **Suggested before adopting `low`:** a replay of the hardest parts BoC has seen, at `low` against the default, on accuracy and time. Examples are AoC 2024 day 15 part 2 and day 24 part 2 (sol's longest), AoC 2019 day 18, and the 2019 letter-art parts. Codex has not been measured.
+

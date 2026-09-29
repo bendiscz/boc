@@ -261,3 +261,12 @@ On 2026-09-30 the operator approved four speedups, after measurements showed tha
 
 Also fixed: the Docker executor's own cap (120 s) would have undercut `sandbox.maxRunSeconds` above 120; the executor now takes the configured limit. Results are in EVALUATION.md.
 
+## D031 — Configurable reasoning effort
+
+On 2026-09-30 the operator asked to benchmark the model's reasoning setting, since generation is almost all of the remaining solving time (D030).
+
+- **Before this, BoC set no effort:** pi's `thinkingLevel` was `off`, and for both providers pi-ai then sends **no reasoning parameter**, so each provider's server default applied. On Copilot, pi has no reachable `none` level. Reported reasoning tokens place Copilot's default between `low` and `medium` (EVALUATION.md).
+- **The setting:** `subscriptions[].reasoning` (`low`, `medium`, `high`, or `xhigh`) sets the effort for that subscription's requests. Unset keeps the provider default.
+- **Output cap:** reasoning tokens count toward the output cap, and Copilot enforces the cap as `max_tokens`. A subscription with reasoning should therefore raise `estimate.assumedMaxOutputTokens`; the benchmark used 32000.
+- **The event config:** unchanged until the operator decides (see EVALUATION.md, "Reasoning effort").
+
