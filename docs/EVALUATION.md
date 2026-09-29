@@ -186,6 +186,6 @@ A supervised live run by the agent with the operator's go-ahead: `boc run --days
 - **H. Letters drawn as ASCII art are misread.** Day 11 part 2's program printed eight capital letters in the 4×6 block font of past AoC events. Codex (after the Copilot outage) proposed four different readings within 3 minutes, all wrong. The private transcript shows that the rendered text was clean and unambiguous, and it was read by eye one glyph at a time. Day 8 part 2 used the same font and was read correctly (Copilot), so the failure is intermittent. Each wrong reading also costs a submission and a wait, which works against "never guess".
   - Possible remedies, for the operator to decide:
     - (a) Prompt guidance: decode letter art programmatically, compare glyphs, and never propose a reading that is not certain.
-    - (b) A general-purpose OCR library for this font, preinstalled in the solver image. This counts as a freely available library, not a puzzle solution (D007).
+    - (b) A general-purpose OCR library for this font, preinstalled in the solver image. This counts as a freely available library, not a puzzle solution (D004, D010).
     - (c) Refuse, within an attempt, a new reading that differs from a rejected one in only one or two characters.
 
