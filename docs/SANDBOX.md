@@ -45,5 +45,5 @@ The bundle is combined with the system bundle in `/tmp` for the PyPI step only, 
 ## Outstanding
 
 - A snapshot-pinned Debian mirror for fully reproducible images. Debian packages are verified by apt's signatures, but their versions follow the current archive at build time.
-- An amd64 run of the Linux probe: so far only arm64 (the `sandbox/linux-probe.sh` method works on any Docker host). A bare-metal Linux host run is still worthwhile before an event, but the native-Linux permission semantics are now covered.
+- An amd64 run of the Linux probe: so far only arm64 (the `sandbox/linux-probe.sh` method works on any Docker host). A bare-metal Linux host run is still worthwhile before an event, but the native-Linux permission semantics are now covered. The Raspberry Pi host covers it: `deploy/rpi/check.sh --probe` (RPI.md).
 - Seccomp/AppArmor profile review beyond Docker defaults, and a dedicated VM for a stronger threat model.

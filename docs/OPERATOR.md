@@ -14,6 +14,10 @@ npm run check
 npm run build
 ```
 
+## Unattended host
+
+For the event, run BoC as a systemd service on a dedicated Raspberry Pi 5: see [RPI.md](RPI.md) (D027). The rest of this guide applies there unchanged; run commands as the `boc` user.
+
 ## Solver image
 
 Build the toolchain image once per event on a trusted host, then record its ID:

@@ -56,9 +56,22 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **to be decided with the operator.** The open findings of the live AoC drills were decided and implemented on 2026-09-29 (D026): one resubmission after an unknown outcome, and a separate brake window for session checks.
+Next concrete task: **set up the Raspberry Pi host (D027, [RPI.md](RPI.md)).**
 
-Candidates: the unattended-host setup (Raspberry Pi 5, systemd with `Restart=on-failure`, `npm run test:linux`, and a replay benchmark for the run timeout) and the end-to-end rehearsal (milestone 7). AoC 2024 days 1–24 are solved on the account; day 25 part 2 (the button) is pending.
+- **The operator's part:**
+  - the hardware (SSD, active cooler, Ethernet);
+  - flashing Raspberry Pi OS Lite (64-bit) with an SSH key;
+  - `sudo sh deploy/rpi/setup.sh`;
+  - `deploy/rpi/push-image.sh` and `push-private.sh` from the development machine.
+- **The agent's part, once SSH access is given:**
+  - `check.sh --probe` (the bare-metal Linux executor run);
+  - fixing any memory-cgroup or 16K-page problem;
+  - a short replay benchmark on the Pi to check the 60-second run timeout (with the go-ahead);
+  - enabling `boc.service`, and a restart drill under systemd.
+- **Afterwards:** the end-to-end rehearsal (milestone 7). AoC 2024 days 1–24 are solved on the account; day 25 part 2 (the button) is pending.
+- **Once the credentials move to the Pi,** stop running live BoC commands on the development Mac with them (D022).
+
+The open findings of the live AoC drills were decided and implemented on 2026-09-29 (D026).
 
 Operator decision (2026-09-29): every held reservation was settled at 0 (`operator:2026-09-29-operator-instruction-settle-zero`), including the 3.39 in `var/bench/sol-2024` that was kept on 2026-09-28. No reservation is held. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
@@ -428,4 +441,13 @@ Operator decisions on the AoC drills (D026, 2026-09-29):
 - Live, with the operator's go-ahead: drill A2b (2024 day 3), a crash during a submission, then a resubmission judged correct. Both parts solved (EVALUATION.md).
 
 AoC 2024 days 2 and 4–12 (live, 2026-09-29, agent-run with the operator's go-ahead): 20/20 correct on the first submission, 24.74 Copilot credits (EVALUATION.md). Idle sleep on the development Mac paused the run once.
+
+Raspberry Pi deployment files (D027, 2026-09-29):
+
+- Added `docs/RPI.md` and the files in `deploy/rpi/`: `setup.sh`, `boc.service`, `check.sh`, `push-image.sh`, and `push-private.sh`.
+- Verification without a Pi:
+  - shellcheck (`-s sh`) is clean on all scripts;
+  - `setup.sh` ran end to end in a `debian:trixie` arm64 container, with only `systemctl`, `timedatectl`, and `ufw` stubbed. That covered Docker's apt repository, the Node.js 24.21.0 checksum, the `boc` user, the clone and build, the `boc` wrapper, and the unit installation;
+  - the generated unit passes `systemd-analyze verify`.
+- Not run on real Pi hardware yet.
 

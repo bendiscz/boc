@@ -215,3 +215,14 @@ On 2026-09-29 the operator decided the two open findings of the live AoC drills 
   - `boc submission not-judged` still unblocks an answer when the operator has evidence.
 - **The bug brake leaves session checks out.** `/settings` checks and the cookie-less `/about` probe use their own sliding window with the same cap (10 per 10 minutes). A session recovery can no longer delay the puzzle, input, and answer requests. A runaway session-check loop is still braked.
 
+## D027 — Unattended host: a dedicated Raspberry Pi 5 appliance
+
+On 2026-09-29 the operator approved deploying BoC on a dedicated Raspberry Pi 5 (8 GB), set up as described in [RPI.md](RPI.md):
+
+- **Operating system:** Raspberry Pi OS Lite (64-bit) on an SSD, with nothing else on the host. Only SSH is allowed inbound, unattended updates are security-only, and automatic reboots are disabled.
+- **Runtime:** Docker Engine from Docker's repository, and the official Node.js 24 build. BoC runs as a dedicated `boc` user in the `docker` group, which is root-equivalent: another reason the host is single-purpose.
+- **Service:** systemd with `Restart=on-failure` (60 s), at most 5 starts per hour, and no retry of usage errors (exit 2). It starts only after a synchronized clock and Docker. D024's stale-lock removal makes restarts safe.
+- **Solver image:** transferred with `docker save | docker load`, which keeps the ID, rather than rebuilt, so the host runs the probed image.
+- **Credentials:** moved to the Pi, which then owns them. The development machine must not run BoC with the same credential files again (D022).
+- **Checks before enabling the service:** the memory cgroup, so that solver memory limits apply, is enabled by `setup.sh` if missing; Docker memory-limit support, the 16K page size, NTP, the SSD, and private-file modes are checked by `check.sh`; and the executor probe runs with every toolchain.
+

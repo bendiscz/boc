@@ -1,0 +1,45 @@
+# Bot of Code (BoC) as an unattended service on a dedicated host (docs/RPI.md).
+# Installed by deploy/rpi/setup.sh to /etc/systemd/system/boc.service, where
+# @BOC_HOME@ and @BOC_CONFIG@ are substituted. Enable it only after the event
+# config, the credentials, and the solver image are in place, and the checks pass.
+
+[Unit]
+Description=Bot of Code (BoC) Advent of Code contestant
+Documentation=file://@BOC_HOME@/boc/docs/RPI.md
+# Release timing depends on the clock: start only once NTP has synchronized it.
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target docker.service
+Requires=docker.service
+# A persistent error (for example an unsettled provider charge, D021) must not
+# cause a restart loop: at most 5 starts per hour, then systemd gives up and the
+# healthchecks.io dead-man's switch alerts the operator.
+StartLimitIntervalSec=3600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=boc
+Group=boc
+WorkingDirectory=@BOC_HOME@/boc
+UMask=0077
+ExecStart=/usr/local/bin/node @BOC_HOME@/boc/dist/main.js run @BOC_CONFIG@
+# SIGTERM stops BoC after the current step; journals stay consistent even when the
+# stop times out and systemd kills it (D012), and a restart removes the stale locks (D024).
+KillSignal=SIGTERM
+TimeoutStopSec=120
+# Exit 0: the event has no further puzzles. Exit 2: usage error (do not retry).
+Restart=on-failure
+RestartSec=60
+RestartPreventExitStatus=2
+# Hardening that leaves the Docker CLI (through the docker group's socket) working.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
