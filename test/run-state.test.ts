@@ -214,7 +214,31 @@ test("restart records interrupted work; an interrupted submission is never retri
     outcome: "answer",
     answer: "42",
   });
-  await assert.rejects(store.record(submit(2, 3, "42")), /duplicate-answer/);
+  // One automatic resubmission of an unknown outcome is allowed (D026)...
+  await store.record(submit(2, 3, "42"));
+  await store.record({
+    type: "submission-finished",
+    ...part1,
+    submission: 2,
+    verdict: "uncertain",
+  });
+  await store.record({
+    type: "submission-reconciled",
+    ...part1,
+    submission: 2,
+    verdict: "not-correct",
+    evidence: "puzzle-page-unsolved",
+  });
+  // ...but a second unknown outcome blocks the answer.
+  await store.record({ type: "attempt-started", ...part1, attempt: 4, subscription: "s" });
+  await store.record({
+    type: "attempt-finished",
+    ...part1,
+    attempt: 4,
+    outcome: "answer",
+    answer: "42",
+  });
+  await assert.rejects(store.record(submit(3, 4, "42")), /duplicate-answer/);
 });
 
 test("replay rejects inconsistent journals and a different event", async (t) => {
@@ -298,18 +322,41 @@ test("an operator can mark a never-judged submission so its answer is submittabl
     outcome: "answer",
     answer: "42",
   });
-  await assert.rejects(store.record(submit(2, 2, "42")), /duplicate-answer/);
+  // The one automatic resubmission (D026) also ends unknown and not correct.
+  await store.record(submit(2, 2, "42"));
+  await store.record({
+    type: "submission-finished",
+    ...part1,
+    submission: 2,
+    verdict: "uncertain",
+  });
+  await store.record({
+    type: "submission-reconciled",
+    ...part1,
+    submission: 2,
+    verdict: "not-correct",
+    evidence: "puzzle-page",
+  });
+  await store.record({ type: "attempt-started", ...part1, attempt: 3, subscription: "s" });
+  await store.record({
+    type: "attempt-finished",
+    ...part1,
+    attempt: 3,
+    outcome: "answer",
+    answer: "42",
+  });
+  await assert.rejects(store.record(submit(3, 3, "42")), /duplicate-answer/);
   await store.record({
     type: "submission-not-judged",
     ...part1,
-    submission: 1,
+    submission: 2,
     note: "auth-rejected",
   });
-  await store.record(submit(2, 2, "42"));
-  await store.record({ type: "submission-finished", ...part1, submission: 2, verdict: "correct" });
+  await store.record(submit(3, 3, "42"));
+  await store.record({ type: "submission-finished", ...part1, submission: 3, verdict: "correct" });
   // Judged verdicts cannot be overridden.
   await assert.rejects(
-    store.record({ type: "submission-not-judged", ...part1, submission: 2, note: "x" }),
+    store.record({ type: "submission-not-judged", ...part1, submission: 3, note: "x" }),
     invalid,
   );
 });

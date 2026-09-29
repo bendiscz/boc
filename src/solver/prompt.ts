@@ -1,5 +1,5 @@
 import type { PartNumber } from "../state/ids.ts";
-import type { PartState } from "../state/run-state.ts";
+import { answerRejection, type PartState } from "../state/run-state.ts";
 
 /** Prompts for the solver. Puzzle text is private runtime data, never committed. */
 
@@ -67,11 +67,23 @@ export function taskPrompt(options: TaskPromptOptions): string {
       "Your previous attempt ran out of time without an answer. Choose a simpler, more direct approach.",
     );
   }
-  const rejected = options.partState.submissions.filter((s) => VERDICT_TEXT[s.verdict]);
+  const submissions = options.partState.submissions;
+  // An answer whose only record is one unknown outcome may be proposed again (D026).
+  const unknown = (answer: string) =>
+    answerRejection(options.partState, answer) === undefined &&
+    submissions.some((s) => s.answer === answer && s.verdict === "not-correct");
+  const rejected = submissions.filter((s) => VERDICT_TEXT[s.verdict] && !unknown(s.answer));
   if (rejected.length > 0) {
     lines.push("", "Previously submitted answers for this part:");
     for (const s of rejected) lines.push(`- ${s.answer}: ${VERDICT_TEXT[s.verdict]}`);
     lines.push("Find the bug; do not resubmit these values.");
+  }
+  const pending = [...new Set(submissions.filter((s) => unknown(s.answer)).map((s) => s.answer))];
+  if (pending.length > 0) {
+    lines.push(
+      "",
+      `An earlier submission of ${pending.join(", ")} was interrupted, and its outcome is unknown. If your program produces that value, propose it; do not avoid it.`,
+    );
   }
   if (options.partState.lowerBound)
     lines.push(`The answer is greater than ${options.partState.lowerBound}.`);

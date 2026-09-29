@@ -474,3 +474,43 @@ test("the session check reads /settings, re-reads the cookie, and classifies the
   assert.equal(seen[0]?.cookie, `session=${COOKIE}`);
   assert.equal(seen[1]?.cookie, `session=${renewed}`);
 });
+
+test("session checks have their own brake window and never delay puzzle requests", async (t) => {
+  let now = 0;
+  const starts: { url: string; at: number }[] = [];
+  const impl = (async (url: string | URL) => {
+    starts.push({ url: String(url).replace("https://adventofcode.com", ""), at: now });
+    return String(url).endsWith("/settings")
+      ? new Response("oops", { status: 500 })
+      : new Response('<html><div class="user">x</div></html>');
+  }) as typeof fetch;
+  const client = createAocClient({
+    cookieFile: await cookieFile(t),
+    contact: "ops@example.invalid",
+    version: "0",
+    fetch: impl,
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms;
+    },
+    rateCap: { max: 3, windowMs: 60_000 },
+  });
+  // Three puzzle reads fill the main window at once...
+  for (let i = 0; i < 3; i++) await client.fetchPuzzle(2025, 1);
+  // ...and session checks (each /settings plus the /about probe) still go out at once.
+  assert.equal(await client.checkSession?.(), "logged-out");
+  assert.equal(await client.checkSession?.(), "logged-out");
+  assert.deepEqual(
+    starts.map((s) => `${s.url}@${s.at}`),
+    [
+      "/2025/day/1@0",
+      "/2025/day/1@0",
+      "/2025/day/1@0",
+      "/settings@0",
+      "/about@0",
+      "/settings@0",
+      "/about@60000",
+    ],
+    "each window brakes only its own requests",
+  );
+});

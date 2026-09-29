@@ -498,3 +498,25 @@ test("a part already solved on AoC is adopted from the page, with no model call 
   assert.equal(f.prompts.length, 0);
   assert.equal(f.events.filter((e) => /adopted the accepted answer/.test(e)).length, 2);
 });
+
+test("an interrupted submission that AoC never recorded is resubmitted once (D026)", async (t) => {
+  const f = await fixture(t, {
+    aoc: [
+      page(1, [], 1),
+      "", // Unrecognized reply: the outcome is unknown.
+      page(1, [], 1), // Reconciliation: the level is still open.
+      reply("That's the right answer!"),
+      page(2, ["7"], 2),
+      reply("That's the right answer!"),
+    ],
+    model: [propose("7"), propose("7"), propose("8")],
+  });
+  assert.deepEqual(await f.solve(), { part1: "solved", part2: "solved" });
+  assert.deepEqual(
+    f.aocCalls.filter((c) => c.startsWith("answer")),
+    ["answer 1=7", "answer 1=7", "answer 2=8"],
+    "exactly one automatic resubmission",
+  );
+  assert.match(f.prompts[1] ?? "", /submission of 7 was interrupted, and its outcome is unknown/);
+  assert.doesNotMatch(f.prompts[1] ?? "", /- 7: rejected/);
+});

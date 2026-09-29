@@ -226,9 +226,13 @@ export function answerRejection(
   partState: PartState,
   candidate: string,
 ): "duplicate-answer" | "contradicts-too-low" | "contradicts-too-high" | undefined {
-  if (partState.submissions.some((s) => s.answer === candidate && !UNJUDGED.includes(s.verdict))) {
-    return "duplicate-answer";
-  }
+  const same = partState.submissions.filter((s) => s.answer === candidate);
+  const judged = same.some((s) => !UNJUDGED.includes(s.verdict) && s.verdict !== "not-correct");
+  // `not-correct` comes only from reconciling an unknown outcome while the level was
+  // still open: AoC may never have judged it. One automatic resubmission is allowed
+  // (operator decision, D026); its verdict is final, and a second unknown blocks it.
+  const unknown = same.filter((s) => s.verdict === "not-correct").length;
+  if (judged || unknown > 1) return "duplicate-answer";
   if (isInteger(candidate)) {
     const value = BigInt(candidate);
     if (partState.lowerBound !== undefined && value <= BigInt(partState.lowerBound)) {

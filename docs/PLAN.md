@@ -49,20 +49,15 @@
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
-- **Checks.** `npm run check`: 179 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 181 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **operator decisions on the open findings of the live AoC drills (2026-09-29, EVALUATION.md, "Live AoC drills")**:
+Next concrete task: **to be decided with the operator.** The open findings of the live AoC drills were decided and implemented on 2026-09-29 (D026): one resubmission after an unknown outcome, and a separate brake window for session checks.
 
-- **G (crash during submission).** Choose one:
-  - (a) Keep never resubmitting an answer whose outcome is unknown, but stop burning attempts. When a new attempt re-derives the blocked answer, the part pauses as `needs-operator` with an urgent alert. `boc submission not-judged` then also returns the part to `ready` and re-proposes the answer.
-  - (b) Allow at most one automatic resubmission of an answer whose outcome is unknown when reconciliation finds the level still open. If AoC had in fact judged it wrong, this costs one duplicate wrong answer and a wait. It relaxes the no-duplicates rule for this narrow case.
-- **Brake after a session recovery.** Keep the brake at 10 requests per 10 minutes, raise it (for example to 15), or exclude session checks from it.
-
-Afterwards, the candidates are the unattended-host setup (Raspberry Pi 5, systemd with `Restart=on-failure`, `npm run test:linux`, and a replay benchmark for the run timeout) and the end-to-end rehearsal (milestone 7). Day 2 of AoC 2024 is still unsolved on the account (drill A2); the drill storage `var/bench/drill-aoc-2024` cannot finish it (defect G).
+Candidates: the unattended-host setup (Raspberry Pi 5, systemd with `Restart=on-failure`, `npm run test:linux`, and a replay benchmark for the run timeout) and the end-to-end rehearsal (milestone 7). Day 2 of AoC 2024 is still unsolved on the account (drill A2); the drill storage `var/bench/drill-aoc-2024` cannot finish it (defect G).
 
 Operator decision (2026-09-29): every held reservation was settled at 0 (`operator:2026-09-29-operator-instruction-settle-zero`), including the 3.39 in `var/bench/sol-2024` that was kept on 2026-09-28. No reservation is held. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
@@ -125,7 +120,7 @@ Live runs (provider calls, AoC requests, submissions) spend real credits: start 
 ### 7. AoC 2026 readiness
 
 - [ ] Recheck site rules, event calendar, provider policy, models, and credit semantics.
-- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills A1–A3 ran live on 2026-09-29: an expired session passes after D025, duplicate protection across storages passes, and a crash during submission loses the part (defect G, an open decision).)
+- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills A1–A3 ran live on 2026-09-29: an expired session passes after D025, duplicate protection across storages passes, and a crash during submission loses the part (defect G, fixed by D026).)
 - [x] Document installation, credential setup, budget configuration, private data handling, operation, and recovery. (`OPERATOR.md`)
 - [ ] Run an end-to-end rehearsal and obtain any remaining operator-side setup.
 
@@ -421,4 +416,12 @@ Live AoC drills and AoC resilience (D025, 2026-09-29, agent-run with the operato
   - resilient reads: backoff, waiting for a replaced cookie, a 15-minute recheck, the deadline, and answers never retried;
   - reconciliation retried after an outage.
 - Live on AoC 2024, drills A1–A3 (EVALUATION.md): about 30 AoC requests in total, and a 10-minute gap between processes. Real submissions: day 1 (two correct answers) and the day 2 part 1 submission of unknown outcome.
+
+Operator decisions on the AoC drills (D026, 2026-09-29):
+
+- Option (b), one automatic resubmission after an unknown outcome, and a separate brake window for session checks. The rule change is in `answerRejection`; the prompt now lists such answers as "outcome unknown".
+- `npm run check`: 181 offline tests passed. New tests:
+  - one resubmission, then blocked after a second unknown outcome;
+  - end to end, an interrupted submission resubmitted once and solved;
+  - session checks braked in their own window.
 

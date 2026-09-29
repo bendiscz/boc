@@ -206,3 +206,12 @@ The live AoC drills of 2026-09-29 (EVALUATION.md) showed that AoC answers an unk
   - Answer submissions are never retried; unknown outcomes are reconciled (D014).
 - **Adopting answers from the page.** A `ready` part whose accepted answer is already on the puzzle page (solved outside this storage) is recorded with the new run-state record `part-adopted` as solved. There is no model call and no submission. This prevents duplicate submissions after a storage reset or a manual solve. The final day's part 2 shows no answer and is not adopted.
 
+## D026 — One resubmission after an unknown outcome; a separate brake window for session checks
+
+On 2026-09-29 the operator decided the two open findings of the live AoC drills (EVALUATION.md):
+
+- **Crash during a submission (defect G): option (b).** Reconciliation marks an unknown outcome `not-correct` when the page shows the level still open, but AoC may never have judged it. Such an answer may be submitted **once more** automatically. The verdict of that resubmission is final, and a second unknown outcome for the same answer blocks it. If AoC had in fact judged the first submission wrong, the cost is one repeated wrong answer and its wait. This deliberately relaxes the no-duplicates rule (D014) for this narrow case only. Answers with a judged verdict (wrong, too high, too low) are never resubmitted.
+  - The solver prompt lists such an answer as "interrupted, outcome unknown" rather than rejected, so the model proposes it again when its program produces it.
+  - `boc submission not-judged` still unblocks an answer when the operator has evidence.
+- **The bug brake leaves session checks out.** `/settings` checks and the cookie-less `/about` probe use their own sliding window with the same cap (10 per 10 minutes). A session recovery can no longer delay the puzzle, input, and answer requests. A runaway session-check loop is still braked.
+

@@ -168,6 +168,11 @@ export function createAocClient(options: AocClientOptions): AocClient {
   const timeoutMs = options.timeoutMs ?? 30_000;
   let cookie: Promise<string> | undefined;
   const starts: number[] = [];
+  /**
+   * Session checks and their public-page probe have their own window (operator
+   * decision, D026): a session recovery must not delay the puzzle burst.
+   */
+  const sessionStarts: number[] = [];
   let tail: Promise<unknown> = Promise.resolve();
 
   const loadCookie = () => {
@@ -205,14 +210,15 @@ export function createAocClient(options: AocClientOptions): AocClient {
         }).toString();
       }
       const session = target.kind === "probe" ? undefined : await loadCookie();
+      const window = target.kind === "session" || target.kind === "probe" ? sessionStarts : starts;
       for (;;) {
-        while (starts.length > 0 && (starts[0] ?? 0) <= now() - rateCap.windowMs) starts.shift();
-        if (starts.length < rateCap.max) break;
-        const waitMs = (starts[0] ?? 0) + rateCap.windowMs - now();
+        while (window.length > 0 && (window[0] ?? 0) <= now() - rateCap.windowMs) window.shift();
+        if (window.length < rateCap.max) break;
+        const waitMs = (window[0] ?? 0) + rateCap.windowMs - now();
         options.onBrake?.(waitMs);
         await sleep(waitMs);
       }
-      starts.push(now());
+      window.push(now());
       let response: Response;
       try {
         response = await doFetch(url, {
