@@ -165,3 +165,27 @@ A supervised live run by the agent with the operator's go-ahead: `boc run` with 
 - **Host sleep:** one unexplained 12-minute gap before day 7 matched idle sleep on the development Mac (`pmset` log). The rest of the run was kept awake with `caffeinate`. This is not a BoC defect, but it is one more reason for a dedicated host that never sleeps.
 - **Account state:** AoC 2024 days 1–24 are now fully solved on the account, and day 25 part 1 is solved. Day 25 part 2, the final-day button, now has every other star and can be pressed.
 
+## AoC 2019, all days (2026-09-29)
+
+A supervised live run by the agent with the operator's go-ahead: `boc run --days 1..25` with a copy of the event config (Copilot first, Codex failover, both `gpt-6-sol`, 300/100 limits), storage `var/bench/eval-2019`, alerts off, kept awake with `caffeinate`. 2019 is a demanding benchmark: 12 days build on the Intcode computer (days 2, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25). They include interactive programs (a breakout game, a maze-exploring robot, a network of 50 machines, a text adventure), and each attempt starts from a fresh workspace, so the solver rebuilt the interpreter every time.
+
+- **Correctness:** 48 of 50 parts solved, 47 of them on the first submission.
+  - Day 11 part 2 gave up after 4 wrong answers.
+  - Day 25 part 2 (the button) is `needs-stars` because of day 11.
+  - Day 25 part 1, the Intcode text adventure, was solved in one attempt of 46 s.
+- **Extra attempts:**
+  - Day 8 part 1: the first attempt ended with a response cut off at the output cap or time limit; the retry was correct.
+  - Day 14 part 1: a real Copilot outage (below).
+  - Day 11 part 2: see the defect below.
+- **Real Copilot outages:** two, on day 11 part 2 and day 14 part 1. Both were classified as `outage` and handled as D024 intends. Day 11 failed over to Codex; day 14 was retried on Copilot after the backoff, while Codex took over no other part. Neither counted as an attempt.
+- **Credits:** Copilot 105.63 and Codex 3.02, with every reservation settled. The costliest days were day 8 (16.01, including the cut-off response, which D016 charges conservatively), day 18 (7.56, the key maze), and day 17 (6.18). Every other day cost under 5.4.
+- **Latency:** the median from the first attempt to the correct verdict was 32 s over 48 parts. Several part 1 times of 344 s are the bug brake holding the answer submission during back-to-back past days, not solving time.
+
+### Defect found
+
+- **H. Letters drawn as ASCII art are misread.** Day 11 part 2's program printed eight capital letters in the 4×6 block font of past AoC events. Codex (after the Copilot outage) proposed four different readings within 3 minutes, all wrong. The private transcript shows that the rendered text was clean and unambiguous, and it was read by eye one glyph at a time. Day 8 part 2 used the same font and was read correctly (Copilot), so the failure is intermittent. Each wrong reading also costs a submission and a wait, which works against "never guess".
+  - Possible remedies, for the operator to decide:
+    - (a) Prompt guidance: decode letter art programmatically, compare glyphs, and never propose a reading that is not certain.
+    - (b) A general-purpose OCR library for this font, preinstalled in the solver image. This counts as a freely available library, not a puzzle solution (D007).
+    - (c) Refuse, within an attempt, a new reading that differs from a rejected one in only one or two characters.
+

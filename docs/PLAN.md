@@ -45,6 +45,7 @@
     | `smoke-2025` | combined-config smoke test | 2.04 |
     | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78 (the held 26.09 was settled at 0); Codex 1.04 |
     | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46; Codex 0.88 + 2.02 (the held 13.00 was settled at 0) |
+    | `eval-2019` | AoC 2019, all days: 48/50 (EVALUATION.md) | Copilot 105.63; Codex 3.02 |
     | `finish-2024` | AoC 2024 days 2 and 4–12, all first-submission correct | Copilot 24.74; Codex 0 |
     | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills, and A2b after D026 | Copilot 11.82492; Codex 0 |
 
@@ -68,6 +69,7 @@ Next concrete task: **set up the Raspberry Pi host (D027, [RPI.md](RPI.md)).**
   - fixing any memory-cgroup or 16K-page problem;
   - a short replay benchmark on the Pi to check the 60-second run timeout (with the go-ahead);
   - enabling `boc.service`, and a restart drill under systemd.
+- **Open benchmark finding (operator decision):** defect H, misread ASCII-art letters on AoC 2019 day 11 part 2 (EVALUATION.md). The candidate remedies are prompt guidance, a preinstalled OCR library for the letter font, or refusing near-duplicate readings.
 - **Afterwards:** the end-to-end rehearsal (milestone 7). AoC 2024 days 1–24 are solved on the account; day 25 part 2 (the button) is pending.
 - **Once the credentials move to the Pi,** stop running live BoC commands on the development Mac with them (D022).
 
@@ -450,4 +452,6 @@ Raspberry Pi deployment files (D027, 2026-09-29):
   - `setup.sh` ran end to end in a `debian:trixie` arm64 container, with only `systemctl`, `timedatectl`, and `ufw` stubbed. That covered Docker's apt repository, the Node.js 24.21.0 checksum, the `boc` user, the clone and build, the `boc` wrapper, and the unit installation;
   - the generated unit passes `systemd-analyze verify`.
 - Not run on real Pi hardware yet.
+
+AoC 2019 evaluation (live, 2026-09-29, agent-run with the operator's go-ahead): 48/50 parts, 47 on the first submission; day 11 part 2 lost to misread ASCII-art letters (defect H). Two real Copilot outages were handled as D024 intends. Copilot 105.63, Codex 3.02 (EVALUATION.md).
 
