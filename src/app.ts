@@ -2,6 +2,7 @@ import { appendFile } from "node:fs/promises";
 import { type Alert, createNotifier, type Notifier } from "./alerts/notifier.ts";
 import { isReleased, releaseTime, UNLOCK_RETRY_DELAYS_MS, waitForRelease } from "./aoc/calendar.ts";
 import { type AocClient, AocError, createAocClient, DEFAULT_RATE_CAP } from "./aoc/client.ts";
+import { resilientAocClient } from "./aoc/resilient.ts";
 import { AocService } from "./aoc/service.ts";
 import { createLedgerAdmission } from "./budget/admission.ts";
 import { formatCredits } from "./budget/credits.ts";
@@ -226,7 +227,10 @@ async function runEventWith(
     const setCurrent = (puzzle: PuzzleId) => {
       current = puzzle;
     };
-    const client =
+    /** Page reads are retried until this time (set per day: the provider retry window). */
+    let aocDeadline = 0;
+    let sessionAlerted = false;
+    const rawClient =
       options.aocClient ??
       createAocClient({
         cookieFile: config.aoc.sessionCookieFile,
@@ -236,6 +240,24 @@ async function runEventWith(
         onBrake: (ms) =>
           log(`AoC request brake: waiting ${Math.ceil(ms / 1000)} s (${BRAKE_NOTE})`),
       });
+    const client = resilientAocClient({
+      client: rawClient,
+      cookieFile: config.aoc.sessionCookieFile,
+      deadline: () => aocDeadline,
+      now: () => now().getTime(),
+      sleep: options.providerSleep ?? sleep,
+      ...(options.signal ? { signal: options.signal } : {}),
+      log: (message) => log(message),
+      onSessionRejected: () => {
+        if (sessionAlerted) return;
+        sessionAlerted = true;
+        alert(
+          "urgent",
+          "AoC session rejected",
+          "Replace the cookie file; BoC picks it up within a minute and continues.",
+        );
+      },
+    });
     await client.prepare();
     const aoc = new AocService({ client, store, paths, year, now });
     const executor =
@@ -396,6 +418,11 @@ async function runEventWith(
           ...(options.signal ? { signal: options.signal } : {}),
         });
       }
+      // AoC page reads, and the provider waits below, retry within this window.
+      const retryDeadline =
+        Math.max(releaseTime(year, day).getTime(), now().getTime()) + PROVIDER_RETRY_WINDOW_MS;
+      aocDeadline = retryDeadline;
+      sessionAlerted = false;
       const available = await fetchWhenUnlocked(aoc, store, puzzle, sleep, log, options.signal);
       if (!available) {
         log(`${puzzle}: not available`);
@@ -403,8 +430,6 @@ async function runEventWith(
         if (!days) break; // Default mode: the event has no further puzzles.
       } else {
         const bound = store;
-        const retryDeadline =
-          Math.max(releaseTime(year, day).getTime(), now().getTime()) + PROVIDER_RETRY_WINDOW_MS;
         let waitAlerted = false;
         /** Sleep until a subscription may be usable again, within the retry window. */
         const waitForSubscription = async (): Promise<boolean> => {

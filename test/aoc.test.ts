@@ -428,6 +428,9 @@ test("the session check reads /settings, re-reads the cookie, and classifies the
     () => new Response(null, { status: 302, headers: { location: "/auth/login" } }),
     () => new Response("<html>no user marker</html>"),
     () => new Response("oops", { status: 500 }),
+    () => new Response("<html>about</html>"), // Public page loads: the session is rejected.
+    () => new Response("oops", { status: 500 }),
+    () => new Response("down", { status: 503 }), // The site itself fails: unknown.
     () => {
       throw new TypeError("network down");
     },
@@ -451,9 +454,23 @@ test("the session check reads /settings, re-reads the cookie, and classifies the
   await writeFile(path, `${renewed}\n`);
   assert.equal(await client.checkSession?.(), "logged-out", "redirect to login");
   assert.equal(await client.checkSession?.(), "logged-out", "page without the user marker");
-  assert.equal(await client.checkSession?.(), "unknown", "server error");
+  assert.equal(await client.checkSession?.(), "logged-out", "500 while the site is up");
+  assert.equal(await client.checkSession?.(), "unknown", "500 while the site is down");
   assert.equal(await client.checkSession?.(), "unknown", "network failure");
-  assert.ok(seen.every((s) => s.url === "https://adventofcode.com/settings"));
+  assert.deepEqual(
+    seen.map((s) => s.url.replace("https://adventofcode.com", "")),
+    [
+      "/settings",
+      "/settings",
+      "/settings",
+      "/settings",
+      "/about",
+      "/settings",
+      "/about",
+      "/settings",
+    ],
+  );
+  assert.equal(seen[4]?.cookie, "", "the probe sends no cookie");
   assert.equal(seen[0]?.cookie, `session=${COOKIE}`);
   assert.equal(seen[1]?.cookie, `session=${renewed}`);
 });

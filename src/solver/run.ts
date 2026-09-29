@@ -1,7 +1,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model, ProviderStreams } from "@earendil-works/pi-ai";
-import { puzzleText } from "../aoc/parse.ts";
+import { parsePuzzlePage, puzzleText } from "../aoc/parse.ts";
 import type { AocService } from "../aoc/service.ts";
 import { LedgerError } from "../budget/ledger.ts";
 import {
@@ -14,7 +14,7 @@ import {
 } from "../pi/guarded-streams.ts";
 import type { Executor } from "../sandbox/executor.ts";
 import { Workspace } from "../sandbox/workspace.ts";
-import type { PartNumber, PuzzleId } from "../state/ids.ts";
+import { isAnswer, type PartNumber, type PuzzleId } from "../state/ids.ts";
 import { type Layout, writeFileAtomic } from "../state/layout.ts";
 import {
   answerRejection,
@@ -178,6 +178,20 @@ export async function solvePart(options: SolveOptions, part: PartNumber): Promis
         break;
       }
       case "ready": {
+        // Solved outside this storage (e.g. an earlier storage or by hand): the page
+        // shows the accepted answer. Adopt it; never spend credits or resubmit.
+        const shown = parsePuzzlePage(await aoc.statement(puzzle, part)).acceptedAnswers[part - 1];
+        if (shown !== undefined && isAnswer(shown)) {
+          await store.record({
+            type: "part-adopted",
+            puzzle,
+            part,
+            answer: shown,
+            evidence: "puzzle-page",
+          });
+          log("already solved on AoC: adopted the accepted answer from the page (no model call)");
+          break;
+        }
         // Provider refusals are not model attempts: they never count toward the cap.
         if ((partState?.attempts ?? 0) - (partState?.refusedAttempts ?? 0) >= maxAttempts) {
           await store.record({ type: "part-gave-up", puzzle, part, reason: "attempt-limit" });

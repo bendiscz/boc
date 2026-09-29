@@ -13,7 +13,7 @@ import { open } from "node:fs/promises";
  *   D014). Needless traffic is prevented by callers (sleep-until-release, caching,
  *   server answer waits) plus a sliding-window cap here as a brake on bugs.
  * - Requests time out, never follow redirects, and have bounded response sizes.
- *   No automatic retries.
+ *   No automatic retries here; `resilient.ts` retries page reads (never answers).
  * - Errors carry fixed messages and codes only (no URLs, bodies, or cookie).
  */
 
@@ -71,6 +71,8 @@ export interface AocClientOptions {
 
 export type AocRequest =
   | { readonly kind: "session" }
+  /** A public page without the cookie: is the site itself up? */
+  | { readonly kind: "probe" }
   | { readonly kind: "puzzle"; readonly year: number; readonly day: number }
   | { readonly kind: "input"; readonly year: number; readonly day: number }
   | {
@@ -91,6 +93,7 @@ export interface AocClient {
    * Is the session cookie still accepted? One light authenticated page read
    * (`/settings`), re-reading the cookie file first so a replaced cookie counts.
    * `unknown` means the answer could not be established (network, unexpected page).
+   * A 500 costs one more request: a cookie-less read of a public page.
    */
   checkSession?(): Promise<SessionCheck>;
 }
@@ -180,6 +183,8 @@ export function createAocClient(options: AocClientOptions): AocClient {
       let url: string;
       if (target.kind === "session") {
         url = `${AOC_ORIGIN}/settings`;
+      } else if (target.kind === "probe") {
+        url = `${AOC_ORIGIN}/about`;
       } else {
         validateTarget(target.year, target.day);
         const base = `${AOC_ORIGIN}/${target.year}/day/${target.day}`;
@@ -199,7 +204,7 @@ export function createAocClient(options: AocClientOptions): AocClient {
           answer: target.answer,
         }).toString();
       }
-      const session = await loadCookie();
+      const session = target.kind === "probe" ? undefined : await loadCookie();
       for (;;) {
         while (starts.length > 0 && (starts[0] ?? 0) <= now() - rateCap.windowMs) starts.shift();
         if (starts.length < rateCap.max) break;
@@ -214,7 +219,7 @@ export function createAocClient(options: AocClientOptions): AocClient {
           method: isAnswer ? "POST" : "GET",
           headers: {
             "User-Agent": userAgent,
-            Cookie: `session=${session}`,
+            ...(session !== undefined ? { Cookie: `session=${session}` } : {}),
             ...(isAnswer ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
           },
           ...(body !== undefined ? { body } : {}),
@@ -272,6 +277,16 @@ export function createAocClient(options: AocClientOptions): AocClient {
       } catch (error) {
         if (error instanceof AocError && (error.code === "auth" || error.code === "config")) {
           return "logged-out";
+        }
+        // AoC answers an unknown or expired session with HTTP 500 (observed live on
+        // 2026-09-29); a 500 while a public page loads means the session is rejected.
+        if (error instanceof AocError && error.code === "http" && error.status === 500) {
+          try {
+            await request({ kind: "probe" });
+            return "logged-out";
+          } catch {
+            return "unknown";
+          }
         }
         return "unknown";
       }

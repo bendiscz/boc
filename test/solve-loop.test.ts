@@ -483,3 +483,18 @@ test("a known-wrong proposal is refused back to the model within the same attemp
   );
   assert.match(transcript, /already submitted and judged wrong/);
 });
+
+test("a part already solved on AoC is adopted from the page, with no model call or submission", async (t) => {
+  const f = await fixture(t, {
+    aoc: [page(2, ["50", "60"]), page(2, ["50", "60"])],
+    model: [],
+  });
+  assert.deepEqual(await f.solve(), { part1: "solved", part2: "solved" });
+  const parts = f.store.state.puzzles["day-01"]?.parts;
+  assert.equal(parts?.[1].solvedAnswer, "50");
+  assert.equal(parts?.[2].solvedAnswer, "60");
+  assert.equal(parts?.[1].attempts, 0);
+  assert.deepEqual(f.aocCalls, ["puzzle", "puzzle"], "two page reads, no input, no answer");
+  assert.equal(f.prompts.length, 0);
+  assert.equal(f.events.filter((e) => /adopted the accepted answer/.test(e)).length, 2);
+});

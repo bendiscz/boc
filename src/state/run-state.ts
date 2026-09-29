@@ -26,6 +26,7 @@ import { Journal, JournalError } from "./journal.ts";
  *   uncertain ──reconciled(correct)──▶ solved; (not-correct)──▶ ready
  *   proposed ──proposal-discarded (e.g. blocked duplicate)──▶ ready
  *   ready|proposed ──gave-up──▶ gave-up
+ *   ready|proposed ──adopted (the page already shows an accepted answer)──▶ solved
  *
  * Part 2 cannot become ready until part 1 is solved. On open, an interrupted
  * `solving` part is recorded as `interrupted` and an interrupted `submitting`
@@ -179,6 +180,15 @@ const recordSchema = z.discriminatedUnion("type", [
     note: reason,
   }),
   z.strictObject({ ...base, type: z.literal("part-gave-up"), ...where, reason }),
+  // The puzzle page already shows this part's accepted answer (solved outside this
+  // storage, e.g. an earlier run or by hand): adopt it; never solve or submit again.
+  z.strictObject({
+    ...base,
+    type: z.literal("part-adopted"),
+    ...where,
+    answer,
+    evidence: reason,
+  }),
 ]);
 
 export type RunRecord = z.infer<typeof recordSchema>;
@@ -423,6 +433,12 @@ export function transition(state: RunState, record: RunRecord): RunState {
     case "proposal-discarded":
       if (before.status !== "proposed") deny("nothing proposed");
       next.status = "ready";
+      next.proposed = undefined;
+      break;
+    case "part-adopted":
+      if (before.status !== "ready" && before.status !== "proposed") deny("part not idle");
+      next.status = "solved";
+      next.solvedAnswer = record.answer;
       next.proposed = undefined;
       break;
     case "part-gave-up":

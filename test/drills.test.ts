@@ -141,7 +141,7 @@ test("an AoC outage during submission is reconciled from the page, never resubmi
   assert.equal(first[0]?.part2, "solved");
 });
 
-test("an outage on reconciliation leaves the part uncertain until a later run", async (t) => {
+test("an outage on reconciliation is retried and resolves without resubmitting", async (t) => {
   const d = await drill(t);
   d.faults.submit = [new AocError("timeout", "AoC request timed out.", undefined, true)];
   d.faults.puzzle = [];
@@ -152,14 +152,12 @@ test("an outage on reconciliation leaves the part uncertain until a later run", 
   Object.defineProperty(original, "puzzle", {
     get: () => (++fetches === 2 ? [outage] : []),
   });
-  await assert.rejects(d.run(), (e) => e instanceof AocError && e.status === 503);
-  assert.equal((await d.inspect()).puzzles["day-01"]?.parts[1].status, "uncertain");
-  const second = await d.run();
-  assert.equal(second[0]?.part1, "solved");
+  const result = await d.run();
+  assert.equal(result[0]?.part1, "solved", "the reconciliation read was retried (D025)");
   assert.equal(d.calls.filter((c) => c.startsWith("answer 1=")).length, 1);
 });
 
-test("an expired session stops the run with a clear error and resumes after renewal", async (t) => {
+test("an expired session waits out the retry window, then stops with a clear error; renewal resumes", async (t) => {
   const d = await drill(t);
   d.faults.puzzle = [new AocError("auth", "AoC rejected the session.", 400, true)];
   await assert.rejects(d.run(), /rejected the session/);
