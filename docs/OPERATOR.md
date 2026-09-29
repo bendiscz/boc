@@ -106,7 +106,7 @@ BoC can push alerts to your phone through [ntfy](https://ntfy.sh) and keep a [he
 
 | Priority | When |
 | --- | --- |
-| Urgent | A readiness check failed (start, T−30, T−5); a day was abandoned after the 6-hour retry window; the run stopped (provider fault, AoC authentication, or any error) |
+| Urgent | A readiness check failed (start, T−30, T−5); AoC rejected the session during a day; a day was abandoned after the 6-hour retry window; the run stopped (provider fault, AoC authentication, or any error) |
 | High | Failover to another subscription; waiting for providers; a day with a part that gave up, stayed uncertain, or had no subscription |
 | Default | A day finished (both parts solved, or waiting for stars on the final day) |
 | Low | Run started; stopped by you (Ctrl-C) |
@@ -130,7 +130,7 @@ Stop BoC before any command that changes state. They all take the same locks.
 | Held / orphaned / uncertain reservations | Find the actual charge in the provider's usage records, then `ledger settle boc.config.json <id> <amount> operator:<receipt-ref>`. Held credits stay counted until settled. |
 | Unacknowledged overrun (admission blocked) | Investigate, then `ledger acknowledge boc.config.json <id> <note>`. The spent amount stays recorded. |
 | Uncertain submission | The next run reads the puzzle page to resolve it. If AoC provably never judged it (for example, an auth rejection), use `submission not-judged boc.config.json <day> <part> <n> <note>`. A new attempt may then propose the answer again; nothing is resubmitted automatically. |
-| Expired AoC session | Replace the cookie file content, then run again. |
+| Expired AoC session | Replace the cookie file. A running BoC waits for it (urgent alert "AoC session rejected") and continues within a minute. A stopped run continues when started again. |
 | "Provider rejected the credential; run boc login" | `node dist/main.js login boc.config.json <subscription>` (add `--browser` for Codex if device codes are disallowed). A running BoC picks up the renewed file on its next request to that subscription. |
 | Corrupt journal | BoC refuses to open it. Keep a copy, and do not delete or edit it without understanding the damage: the journals are the record of credits spent and answers submitted. |
 

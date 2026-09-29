@@ -43,26 +43,28 @@
     | `bench-luna-2025`, `bench-luna-2024`, `bench-luna-2024b` | luna replays | 1.14, 3.41, 0.51 |
     | `bench-sol-2025`, `bench-sol-2025b`, `bench-sol-2024` | sol replays | 7.96, 5.00, 22.88; `bench-sol-2024` also holds 3.39 by the operator's decision |
     | `smoke-2025` | combined-config smoke test | 2.04 |
-    | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78, and 26.09 held (two unknown-charge reservations, EVALUATION.md); Codex 1.04 |
-    | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46, and 13.00 held; Codex 0.88 + 2.02 |
+    | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78 (the held 26.09 was settled at 0); Codex 1.04 |
+    | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46; Codex 0.88 + 2.02 (the held 13.00 was settled at 0) |
+    | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills | Copilot 8.77; Codex 0 |
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
-- **Checks.** `npm run check`: 174 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 179 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
 
-Next concrete task: **to be decided with the operator.** The live failure drills found defects A–D, which are now fixed (D024) and pass a live rerun (EVALUATION.md). Candidates:
+Next concrete task: **operator decisions on the open findings of the live AoC drills (2026-09-29, EVALUATION.md, "Live AoC drills")**:
 
-- an unattended-host setup (Raspberry Pi 5 8 GB with an SSD, systemd with `Restart=on-failure`, now safe after a crash because stale locks are removed at start), including `npm run test:linux` and a replay benchmark on the Pi to check the 60-second run timeout on a slower CPU;
-- the remaining live drills, which need AoC: an expired AoC session and duplicate-submission protection (both are covered offline);
-- the end-to-end rehearsal (milestone 7).
+- **G (crash during submission).** Choose one:
+  - (a) Keep never resubmitting an answer whose outcome is unknown, but stop burning attempts. When a new attempt re-derives the blocked answer, the part pauses as `needs-operator` with an urgent alert. `boc submission not-judged` then also returns the part to `ready` and re-proposes the answer.
+  - (b) Allow at most one automatic resubmission of an answer whose outcome is unknown when reconciliation finds the level still open. If AoC had in fact judged it wrong, this costs one duplicate wrong answer and a wait. It relaxes the no-duplicates rule for this narrow case.
+- **Brake after a session recovery.** Keep the brake at 10 requests per 10 minutes, raise it (for example to 15), or exclude session checks from it.
 
-Held drill reservations, for the operator to settle or keep: in `var/bench/drill-2025`, 13.07 (provably never reached the provider, so its true charge is 0) and 13.02 (a killed call); in `var/bench/drill-2025b`, 13.00 (a killed call).
+Afterwards, the candidates are the unattended-host setup (Raspberry Pi 5, systemd with `Restart=on-failure`, `npm run test:linux`, and a replay benchmark for the run timeout) and the end-to-end rehearsal (milestone 7). Day 2 of AoC 2024 is still unsolved on the account (drill A2); the drill storage `var/bench/drill-aoc-2024` cannot finish it (defect G).
 
-Operator decision (2026-09-28): the 3.39-credit reservation held in `var/bench/sol-2024` stays held. The Codex dashboard is too aggregated to read one call's charge, and the reservation counts only against that bench config. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
+Operator decision (2026-09-29): every held reservation was settled at 0 (`operator:2026-09-29-operator-instruction-settle-zero`), including the 3.39 in `var/bench/sol-2024` that was kept on 2026-09-28. No reservation is held. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
 
 Decided (D020, 2026-09-28): keep `gpt-6-sol` as the solving model, with no parallel solving; Anthropic is dropped.
 
@@ -123,7 +125,7 @@ Live runs (provider calls, AoC requests, submissions) spend real credits: start 
 ### 7. AoC 2026 readiness
 
 - [ ] Recheck site rules, event calendar, provider policy, models, and credit semantics.
-- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills, an expired session and duplicate submissions, are offline only.)
+- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills A1–A3 ran live on 2026-09-29: an expired session passes after D025, duplicate protection across storages passes, and a crash during submission loses the part (defect G, an open decision).)
 - [x] Document installation, credential setup, budget configuration, private data handling, operation, and recovery. (`OPERATOR.md`)
 - [ ] Run an end-to-end rehearsal and obtain any remaining operator-side setup.
 
@@ -409,4 +411,14 @@ Outage handling and drill rerun (D024, 2026-09-29):
   - stale-lock removal for a dead PID and for an earlier boot, while a live owner is kept with a clear error;
   - classification of outages versus credential rejections, and of refresh failures.
 - Live rerun of drills 1–4 via replay, all passed (EVALUATION.md). Drill tooling: `var/drill/proxy.mjs` (`SIGUSR1` toggles a full outage, `SIGUSR2` a Copilot-only one, `down` starts in an outage) and `var/drill/run.sh`.
+
+Live AoC drills and AoC resilience (D025, 2026-09-29, agent-run with the operator's go-ahead):
+
+- Held reservations settled at 0 on the operator's instruction.
+- Page adoption (`part-adopted`) and D025 implemented. `npm run check`: 179 offline tests passed. New tests:
+  - adoption with no model call or submission;
+  - the session check's `/about` probe;
+  - resilient reads: backoff, waiting for a replaced cookie, a 15-minute recheck, the deadline, and answers never retried;
+  - reconciliation retried after an outage.
+- Live on AoC 2024, drills A1–A3 (EVALUATION.md): about 30 AoC requests in total, and a 10-minute gap between processes. Real submissions: day 1 (two correct answers) and the day 2 part 1 submission of unknown outcome.
 

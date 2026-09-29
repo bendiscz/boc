@@ -131,3 +131,21 @@ Defects A–D are fixed (D024) and covered by offline regression tests. The dril
 
 - **A real transient failure.** During the rerun, Copilot's start check once failed with no drill proxy involved. It was classified as unreachable, and three checks a minute later succeeded. Before D024 this would have read `run boc login` and skipped Copilot for the rest of the run.
 - **Credits:** Copilot 7.89 spent plus 13.00 held; Codex 2.90.
+
+## Live AoC drills (2026-09-29)
+
+Supervised, agent-run with the operator's go-ahead, on AoC 2024. Days 1–12 of 2024 were unsolved on the dedicated account. Private configs: `var/drill-aoc-2024*.config.json`, with storage under `var/bench/drill-aoc-2024*`. Alerts were enabled, so real ntfy pushes and healthchecks.io pings were sent. Credits: Copilot 8.77, Codex 0. Before the drills, the operator had four held reservations settled at 0 (`operator:2026-09-29-operator-instruction-settle-zero`): 13.07 and 13.02 in `drill-2025`, 13.00 in `drill-2025b`, and 3.39 in `bench-sol-2024`.
+
+| # | Drill | Result |
+| --- | --- | --- |
+| A1 | Expired session: a random cookie, then renewal | **First try: failed.** AoC answers an unknown session cookie with **HTTP 500** (both a 96- and a 128-character hex value), not with the redirect seen without any cookie. The session check reported "could not be verified", so the start check passed, and the puzzle read stopped the run with "Unexpected AoC HTTP status" (**defects E, F**). **After the D025 fixes: passed.** The start check reported the session rejected. The page read waited for a new cookie, with an urgent alert. After the cookie was replaced (the config's path is a symlink that was re-pointed, so the secret was never copied), BoC continued within a minute and solved day 1 on the first submission for each part. |
+| A2 | `kill -9` right after the `submitting` log line | The write-ahead record left the part `submitting`, and the rerun removed both stale locks by itself. The page showed the level still open, so reconciliation marked the answer `not-correct`, blocking it. Attempts 2–4 each re-derived the same answer and, as instructed, did not propose a rejected answer; the part gave up. No answer was ever resubmitted. The answer was very probably correct and never judged (**defect G**). |
+| A3 | Duplicate protection across storages: a fresh storage on the already-solved day 1 | Both parts were adopted from the answers shown on the page. Three AoC reads, no model call, no submission, 0 credits. Before this session's fix, the model would have solved the day again and BoC would have resubmitted. |
+
+### Defects and findings
+
+- **E. A rejected session passed the session check.** `/settings` answers an unknown cookie with 500. Fixed (D025): a 500 counts as `logged-out` when a cookie-less read of the public `/about` page succeeds.
+- **F. Any 5xx on a page read stopped the whole run,** whether from an expired cookie or from AoC under load at release. Fixed (D025): page reads are retried within the day's retry window, and a rejected session waits for a replaced cookie file.
+- **Adoption (fixed before the drills).** A part whose accepted answer is already on the page is recorded as solved (`part-adopted`), with no model call or submission.
+- **G. A crash between the write-ahead record and AoC's response can lose the part (open; operator decision).** Reconciliation cannot tell "never judged" from "judged wrong" when the level is still open, so it blocks the answer (AOC.md, "Not yet handled"). The model then re-derives the same answer and cannot propose it. The attempts are wasted, and the part gives up. `boc submission not-judged` cannot revive a part that has given up. The window is short, about 0.1–0.9 s per submission.
+- **Brake after a session recovery (open; operator decision).** In A1 the failed-session traffic plus the normal burst came to 10 requests. The per-process brake (10 per 10 minutes) then held part 2's correct answer for 7.7 minutes.

@@ -194,3 +194,15 @@ The live failure drills of 2026-09-29 (EVALUATION.md) found four defects. On the
 - **Stale locks are removed at start.** `boc run` and `boc replay` remove a ledger or run-state lock of this host in two cases: its PID no longer exists, or the host has booted since the lock was taken. Locks now record the boot time. A live owner's lock, or another host's, is kept. The error then names the owner's PID and points to `boc ledger break-lock`. This makes systemd `Restart=on-failure` safe.
 - **Unchanged:** provider faults (unknown charges) still stop the run (D021).
 
+## D025 — AoC resilience: session detection, retried page reads, and adopting answers from the page
+
+The live AoC drills of 2026-09-29 (EVALUATION.md) showed that AoC answers an unknown or expired session cookie with HTTP 500, and that a 5xx on any page read stopped the run. The retry policy follows D024 and the AoC request pacing (AOC.md):
+
+- **Session check.** A 500 from `/settings` makes one more request: a cookie-less read of `/about`. If that succeeds, the session is `logged-out`; otherwise the result is `unknown`.
+- **Page reads** (puzzle page, input, and the reconciliation read) go through `src/aoc/resilient.ts`.
+  - A transient failure (5xx, network, timeout) is retried after 15 s, 30 s, 60 s, then every 15 minutes, like a just-released puzzle.
+  - A rejected session sends one urgent alert and waits for the operator to replace the cookie file. The file is watched locally every minute. The session is rechecked when the file changes, and at most every 15 minutes otherwise.
+  - Both last until the day's retry window ends: 6 hours after the later of the release and the start of that day's solving (D024). The original error is then thrown, which stops the run.
+  - Answer submissions are never retried; unknown outcomes are reconciled (D014).
+- **Adopting answers from the page.** A `ready` part whose accepted answer is already on the puzzle page (solved outside this storage) is recorded with the new run-state record `part-adopted` as solved. There is no model call and no submission. This prevents duplicate submissions after a storage reset or a manual solve. The final day's part 2 shows no answer and is not adopted.
+
