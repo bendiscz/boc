@@ -514,6 +514,7 @@ async function runEventWith(
               model: adapter.model,
               transport: adapter.transport,
               ...(adapter.outputCap ? { outputCap: adapter.outputCap } : {}),
+              ...reasoningOf(config, chosen),
               admission: createLedgerAdmission({
                 ledger,
                 subscription: chosen,
@@ -611,6 +612,12 @@ async function runEventWith(
     await store?.close().catch(() => {});
     await ledger.close().catch(() => {});
   }
+}
+
+/** The subscription's requested reasoning effort (D031), as an optional binding field. */
+function reasoningOf(config: BocConfig, id: string) {
+  const reasoning = config.subscriptions.find((s) => s.id === id)?.reasoning;
+  return reasoning ? { reasoning } : {};
 }
 
 /** Fixed-message error types only; anything else stays generic (it may carry paths). */

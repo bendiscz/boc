@@ -14,6 +14,11 @@ export interface SolverAgentOptions {
   readonly streams: ProviderStreams;
   readonly systemPrompt: string;
   readonly tools: AgentTool[];
+  /**
+   * Requested reasoning effort (D031). Unset keeps pi's "off" level, for which pi-ai
+   * sends no reasoning parameter, so the provider's default effort applies.
+   */
+  readonly reasoning?: "low" | "medium" | "high" | "xhigh";
   /** Hard cap on provider turns per run, independent of credits. */
   readonly maxTurns: number;
   /**
@@ -33,7 +38,7 @@ export function createSolverAgent(options: SolverAgentOptions): Agent {
     initialState: {
       systemPrompt: options.systemPrompt,
       model: structuredClone(options.model),
-      thinkingLevel: "off",
+      thinkingLevel: options.reasoning ?? "off",
       tools: options.tools,
       messages: [],
     },

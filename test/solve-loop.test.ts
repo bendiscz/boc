@@ -614,3 +614,32 @@ test("input previews are bounded", async () => {
     inputPreview(Array.from({ length: 50 }, () => "y".repeat(300)).join("\n")).length <= 2_000,
   );
 });
+
+test("the configured reasoning effort reaches the provider request; unset sends none (D031)", async (t) => {
+  for (const reasoning of ["high", undefined] as const) {
+    const seen: unknown[] = [];
+    const f = await fixture(t, {
+      aoc: [
+        page(1, [], 1),
+        reply("That's the right answer!"),
+        page(2, ["7"], 2),
+        reply("That's the right answer!"),
+      ],
+      model: [propose("7"), propose("8")],
+    });
+    const wrap = (): SolverBinding => {
+      const base = f.binding();
+      const record: typeof base.transport.streamSimple = (m, c, o) => {
+        seen.push((o as { reasoning?: unknown } | undefined)?.reasoning);
+        return base.transport.streamSimple(m, c, o);
+      };
+      return {
+        ...base,
+        transport: { stream: record, streamSimple: record },
+        ...(reasoning ? { reasoning } : {}),
+      };
+    };
+    assert.deepEqual(await f.solve(wrap), { part1: "solved", part2: "solved" });
+    assert.deepEqual(seen, [reasoning, reasoning], String(reasoning));
+  }
+});

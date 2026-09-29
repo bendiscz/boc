@@ -90,6 +90,11 @@ const configSchema = z
           creditPool: identifier,
           limits,
           /** Per-call estimation (D016). Required before the subscription can run. */
+          /**
+           * Reasoning effort requested from the model (D031). Unset: no reasoning
+           * parameter is sent, and the provider's default applies.
+           */
+          reasoning: z.enum(["low", "medium", "high", "xhigh"]).optional(),
           estimate: z
             .strictObject({
               /** Pricing source label, e.g. "github-2026-09". */

@@ -43,6 +43,8 @@ export interface SolverBinding {
   /** Trusted provider transport; wrapped in the guard for every attempt. */
   readonly transport: ProviderStreams;
   readonly outputCap?: number;
+  /** Requested reasoning effort (D031); undefined: the provider default. */
+  readonly reasoning?: "low" | "medium" | "high" | "xhigh";
 }
 
 export interface SolveOptions {
@@ -366,6 +368,7 @@ async function runAttempt(
     streams,
     systemPrompt: SOLVER_SYSTEM_PROMPT,
     tools: tools.tools,
+    ...(binding.reasoning ? { reasoning: binding.reasoning } : {}),
     maxTurns: options.maxTurnsPerAttempt ?? 40,
     shouldStop: () => {
       if (tools.proposed() !== undefined) return true;
