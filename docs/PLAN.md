@@ -71,8 +71,8 @@ Next concrete task: **finish the Raspberry Pi host (D027, [RPI.md](RPI.md)).** `
   - Daily checks (D029).
   - A Pi replay benchmark: 12/12; the Pi is 4.8× slower per core than the Mac, and no run came near the 60-second cap (EVALUATION.md).
 - **Decided (2026-09-30):** `sandbox.maxRunSeconds` is configurable (default 60, at most 540), and the event config on the Pi sets 240.
-- **Done (2026-09-30):** D030 speedups. Model turns went from 4.17 to 2.25 per attempt, time dropped 8–13%, credits about 10%, and accuracy stayed at 12/12 (EVALUATION.md). `boc.service` was left stopped by the operator: start it with `sudo systemctl start boc`.
-- **Reasoning effort (D031, 2026-09-30):** configurable per subscription. On six 2019 days, `low` was 25% faster and 15% cheaper than the provider default, with equal accuracy (12/12 at every level). A replay of the hardest past parts (19 parts) followed: both levels solved 19/19, and `low` was 30% faster and 30% cheaper. A Codex replay (13 parts) followed: `low` was 37% faster and used 62% fewer credits, with one off-by-one wrong answer (2019 day 14 part 2), while the default needed a second attempt after a cut-off response. **Open decision:** set `reasoning: "low"` in the event config on the Pi for Copilot, and for Codex too (EVALUATION.md).
+- **Done (2026-09-30):** D030 speedups. Model turns went from 4.17 to 2.25 per attempt, time dropped 8–13%, credits about 10%, and accuracy stayed at 12/12 (EVALUATION.md). `boc.service` was stopped for the benchmarks: the operator starts it with `sudo systemctl start boc`.
+- **Reasoning effort (D031, 2026-09-30):** configurable per subscription. On six 2019 days, `low` was 25% faster and 15% cheaper than the provider default, with equal accuracy (12/12 at every level). A replay of the hardest past parts (19 parts) followed: both levels solved 19/19, and `low` was 30% faster and 30% cheaper. A Codex replay (13 parts) followed: `low` was 37% faster and used 62% fewer credits, with one off-by-one wrong answer (2019 day 14 part 2), while the default needed a second attempt after a cut-off response. **Decided and applied (2026-09-30):** the event config on the Pi sets `reasoning: "low"` and `assumedMaxOutputTokens: 32000` for both subscriptions; the previous file is kept as `var/event-2026.config.json.before-d031` on the Pi. A Copilot reservation is now 51 of the per-puzzle 100 (D031).
 - **The operator:** move the system from the SD card to an SSD before 1 December.
 - **Afterwards:** the end-to-end rehearsal (milestone 7).
 
@@ -491,4 +491,6 @@ Reasoning effort (D031, 2026-09-30): `subscriptions[].reasoning` was added, with
 Hardest-parts replay (live, 2026-09-30, with the operator's go-ahead; the service was stopped): 19/19 at both levels; `low` was 30% faster and cheaper (EVALUATION.md). The 2024 source storages were copied to the Pi.
 
 Codex reasoning replay (live, 2026-09-30, with the operator's go-ahead; the service was stopped): 13/13 at both levels; `low` 12/13 on the first submission; `low` 37% faster and 62% cheaper (EVALUATION.md).
+
+Event config (2026-09-30, operator decision): `reasoning: "low"` and `assumedMaxOutputTokens: 32000` for both subscriptions on the Pi; the Mac's reference copy was updated the same way. The config validates. Computed locally, a Copilot reservation is 51 and a Codex one 12.6 (per-puzzle limit 100).
 
