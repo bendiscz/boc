@@ -243,3 +243,19 @@ The same six 2019 days on the Pi with Copilot (`gpt-6-sol`), on the D030 code, o
 - **Accuracy:** no difference, because every level solved all 12 parts. **These days are not hard enough to show what reasoning buys**: any accuracy gain from more effort would appear on the hardest parts, where BoC has needed several attempts or long responses. With one sample per part, per-part times are noisy.
 - **Suggested before adopting `low`:** a replay of the hardest parts BoC has seen, at `low` against the default, on accuracy and time. Examples are AoC 2024 day 15 part 2 and day 24 part 2 (sol's longest), AoC 2019 day 18, and the 2019 letter-art parts. Codex has not been measured.
 
+### Hardest past parts: `low` against the default (2026-09-30)
+
+The follow-up suggested above: the parts that took BoC the most attempts or time in earlier runs. The sets were AoC 2024 days 12, 15, 16, 20, 21, and 24 (12 parts; the sources `finish-2024`, `eval-2024-copilot`, and `eval-2024-codex` were copied to the Pi), and AoC 2019 days 8, 14, 17, and 25 (7 scored parts; day 25 part 2 is the button). Both levels used `assumedMaxOutputTokens` 32000, so the reasoning setting was the only difference. The runs were on the Pi with Copilot, one sample per part, in storage `var/bench/hard-{2024,2019}-{default,low}`.
+
+| Set | Effort | Correct (first submission) | Total time | Copilot credits |
+| --- | --- | --- | --- | --- |
+| 2024 | default | 12/12 | 174 s | 25.55 |
+| 2024 | low | 12/12 | 164 s | 21.66 |
+| 2019 | default | 7/7 | 201 s | 21.52 |
+| 2019 | low | 7/7 | 97 s | 11.40 |
+
+- **Accuracy:** equal. All 19 parts were solved on the first submission at both levels, including the parts where sol and luna had needed several attempts before (2024 day 15 part 2 and day 24 part 2) and the letter-art part (2019 day 8 part 2).
+- **Time:** `low` was 30% faster over the 19 parts (262 s against 375 s). The largest difference was the 2019 day 25 text adventure, 107 s against 30 s. The 2024 set differed little (−6%).
+- **Credits:** `low` used 30% fewer (33.06 against 47.07).
+- **Overall:** with the six easier days above, `low` matched the default on all 31 parts, and was faster and cheaper in every set. This is still one sample per part, and it covers Copilot only; Codex, the failover, is unmeasured.
+

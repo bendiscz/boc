@@ -49,6 +49,7 @@
     | `bench-pi-2019` (on the Pi) | Pi replay benchmark, 6 days of 2019 | Copilot 26.54; Codex 0 |
     | `bench-pi-2019-fast` (on the Pi) | the same after D030 | Copilot 23.91; Codex 0 |
     | `bench-pi-2019-r-low`, `-r-medium`, `-r-high` (on the Pi) | reasoning-effort replays | Copilot 20.23, 24.54, 26.61; Codex 0 |
+    | `bench-hard-2024-default`, `-low`, `bench-hard-2019-default`, `-low` (on the Pi) | hardest past parts, low against the default | Copilot 25.55, 21.66, 21.52, 11.40; Codex 0 |
     | `eval-2019b` | 2019 days 11 and 25 after D028: complete | Copilot 2.12; Codex 0 |
     | `bench-ocr-2019a`, `bench-ocr-2019b` | Codex replay of the letter-art parts | Codex 1.23843; 0 |
     | `finish-2024` | AoC 2024 days 2 and 4–12, all first-submission correct | Copilot 24.74; Codex 0 |
@@ -70,7 +71,7 @@ Next concrete task: **finish the Raspberry Pi host (D027, [RPI.md](RPI.md)).** `
   - A Pi replay benchmark: 12/12; the Pi is 4.8× slower per core than the Mac, and no run came near the 60-second cap (EVALUATION.md).
 - **Decided (2026-09-30):** `sandbox.maxRunSeconds` is configurable (default 60, at most 540), and the event config on the Pi sets 240.
 - **Done (2026-09-30):** D030 speedups. Model turns went from 4.17 to 2.25 per attempt, time dropped 8–13%, credits about 10%, and accuracy stayed at 12/12 (EVALUATION.md). `boc.service` was left stopped by the operator: start it with `sudo systemctl start boc`.
-- **Reasoning effort (D031, 2026-09-30):** configurable per subscription. On six 2019 days, `low` was 25% faster and 15% cheaper than the provider default, with equal accuracy (12/12 at every level). **Open decision:** adopt `low` in the event config, preferably after a replay of the hardest past parts, at `low` against the default (EVALUATION.md).
+- **Reasoning effort (D031, 2026-09-30):** configurable per subscription. On six 2019 days, `low` was 25% faster and 15% cheaper than the provider default, with equal accuracy (12/12 at every level). A replay of the hardest past parts (19 parts) followed: both levels solved 19/19, and `low` was 30% faster and 30% cheaper. **Open decision:** set `reasoning: "low"` for Copilot in the event config on the Pi. Codex is unmeasured: keep it at the default, or set `low` as well.
 - **The operator:** move the system from the SD card to an SSD before 1 December.
 - **Afterwards:** the end-to-end rehearsal (milestone 7).
 
@@ -485,4 +486,6 @@ Faster solving (D030, 2026-09-30):
 - Live, with the operator's go-ahead: a Pi replay, 12/12, with 2.25 turns per attempt (EVALUATION.md).
 
 Reasoning effort (D031, 2026-09-30): `subscriptions[].reasoning` was added, with a test that the effort reaches the provider request and that unset sends none. `npm run check`: 193 offline tests passed. Live Pi replays at `low`, `medium`, and `high`, with the operator's go-ahead and the service stopped: all 12/12; `low` was the fastest and cheapest (EVALUATION.md).
+
+Hardest-parts replay (live, 2026-09-30, with the operator's go-ahead; the service was stopped): 19/19 at both levels; `low` was 30% faster and cheaper (EVALUATION.md). The 2024 source storages were copied to the Pi.
 
