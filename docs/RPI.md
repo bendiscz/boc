@@ -24,6 +24,10 @@ Files in `deploy/rpi/`:
   - This smoke test found the >24.8-day timer bug, fixed in `ec5b3b5`.
   - Restart drills under systemd, 2026-09-30: `kill -9`, an outside SIGTERM, `sudo systemctl stop` (no restart), and `sudo reboot` all passed.
   - Replay benchmark: 12/12 parts on the first submission. The Pi is about 4.8× slower per core than the development Mac, and no program came near the 60-second run cap (EVALUATION.md).
+- **In production since 2026-09-30, 12:27 CEST:** `boc.service` is enabled and running the event config.
+  - Settings: `reasoning: "low"`, `assumedMaxOutputTokens: 32000`, `sandbox.maxRunSeconds: 240` (D031).
+  - The checkout is at `main`; the build is from `9627aaa`, and later commits changed only docs.
+  - Still to do: move from the SD card to an SSD before 1 December (step 1 of this guide), then `check.sh --probe` and a service restart.
 
 ## Hardware
 

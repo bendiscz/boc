@@ -1,38 +1,44 @@
 # Development plan and session handoff
 
-## Current state (2026-09-28, end of session)
+## Current state (2026-09-30, end of session)
 
-- **Working end to end.** `boc run` waits for releases (or takes `--days`), fetches and caches the puzzle and input, and solves with a ledger-admitted, constrained agent loop (`pi-agent-core`, D015). Generated code runs in networkless Docker containers. The run then submits with write-ahead records and continues to part 2. Commands:
+- **Working end to end, and deployed.** BoC runs unattended as `boc.service` on the operator's Raspberry Pi 5, `boc@boc.local` (D027, RPI.md). It waits for AoC 2026 (release of day 1: 2026-12-01 05:00 UTC), with a readiness check every day while waiting (D029), then at T−30 and T−5.
+  - The service was started by the operator on 2026-09-30 at 12:27:57 CEST; `journalctl -u boc` shows `start check passed` and `day-01: waiting for the pre-release check`.
+  - The Pi's checkout is at `main` (`4114754`), built from `9627aaa`; later commits changed only docs.
+- **Commands:**
   - `run`, `status`, `views`, `--tui`, `events.log`;
-  - the ledger and submission operator commands (`break-lock` clears both locks);
+  - the ledger and submission operator commands;
   - `login`, `calibration-report`;
   - `replay`, the model benchmark against accepted answers, which never contacts AoC;
   - `alert-test`.
-- **Reliability features added on 2026-09-28:**
-  - final-day part 2 button;
-  - runaway-response limits (120 s per response, 60 s stall, 10 min per attempt; the partial output is kept privately);
-  - refusal of known-wrong proposals back to the model;
-  - failover between subscriptions on provider refusals (D021);
-  - readiness checks at start and T−30 before each release, with a recheck at T−5 (D022);
-  - ntfy and healthchecks.io alerts (D023);
-  - outage handling (D024, 2026-09-29): outages are refusals with backoff and failover; parts wait up to 6 hours after release; credential checks tell an outage from a rejection; credit exhaustion mid-attempt fails over; stale locks are removed at start.
-- **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance.
-- **Providers and model:**
-  - GitHub Copilot and ChatGPT/Codex are calibrated and in `PRODUCTION_ADAPTERS` (FEASIBILITY.md).
-  - The solving model is `gpt-6-sol`, which beat `gpt-6-luna` in the replay benchmark (EVALUATION.md).
-  - No parallel solving; Anthropic is dropped (D020).
-- **Sandbox.** The image `boc-solver:dev` is `sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd` (arm64, rebuilt 2026-09-29 for D028), with `uv` and `advent-of-code-ocr` hash-pinned (`sandbox/*-requirements.txt`). Every private config points to it.
-  - `npm run test:executor -- <id> --toolchains` passes on Docker Desktop.
-  - `npm run test:linux -- <id>` passes on a native Linux daemon (dind) under umask 022 and 077.
-  - An amd64 run and a bare-metal Linux run are still open.
-- **AoC account.** All of AoC 2025 (24 stars) and AoC 2024 days 13–25 (25 stars; day 25 part 2 needs days 1–12) are solved on the dedicated account. Results are in EVALUATION.md. AoC conduct is covered in D014 and AOC.md: no delays within a solve burst, no needless requests, and the bug brake of 10 requests per 10 minutes.
-- **Private local setup** (ignored by Git; never read or print `.secrets/`):
-  - **Secrets:** `.secrets/` holds the AoC cookie, `copilot.json`, `codex.json`, `ntfy-topic-url`, and `healthchecks-ping-url`. The operator's `boc alert-test` passed on 2026-09-28, using `examples/boc.config.json`, whose paths resolve to `.secrets/`.
-  - **Event config:** `var/event-2026.config.json` is for event 2026, with storage `var/event-2026`.
-    - Subscriptions: sol via Copilot first, then Codex (failover, D021), on separate pools of 300 per event and 100 per puzzle each.
-    - Alerts are on, and it uses the image above. Smoke-tested via a 2025 copy (`var/smoke-2025.config.json`): both start checks passed, and Copilot solved day 1.
-    - It shares the credential files with the other configs, so never run two BoC processes concurrently (D022).
-  - **Other configs, each with its own storage under `var/`:**
+- **Reliability and speed:**
+  - The final-day button, with adopting answers already shown on the page (D025).
+  - Runaway-response limits (120 s per response, 60 s stall, 10 min per attempt) and refusal of known-wrong proposals.
+  - Failover between subscriptions (D021), readiness checks (D022, daily D029), and ntfy and healthchecks.io alerts (D023).
+  - Outage handling with a 6-hour retry window, and automatic stale-lock removal (D024).
+  - AoC resilience: session detection and retried page reads (D025).
+  - One resubmission after an unknown submission outcome, and a separate brake window for session checks (D026).
+  - Letter-art decoding with a hash-pinned OCR library (D028).
+  - Speedups (D030): an input preview, `proposeOnSuccess`, concurrent release reads, a 1 s release margin, and warm containers.
+  - Configurable reasoning effort, `low` in the event config (D031), and a configurable run cap, `sandbox.maxRunSeconds` (default 60; 240 on the Pi).
+- **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance. No reservation is held anywhere (all were settled at 0 on 2026-09-29 on the operator's instruction).
+- **Providers and model:** GitHub Copilot and ChatGPT/Codex, calibrated (FEASIBILITY.md). `gpt-6-sol` on both, Copilot first and Codex as failover; no parallel solving; Anthropic is dropped (D020).
+- **Sandbox.** The image `boc-solver:dev` is `sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd` (arm64, rebuilt 2026-09-29 for D028), with `uv` and `advent-of-code-ocr` hash-pinned (`sandbox/*-requirements.txt`). It is loaded on the Pi, and every private config points to it.
+  - `npm run test:executor -- <id> --toolchains` passes on Docker Desktop and on the Pi (bare-metal Linux, 16K pages), including the session checks.
+  - `npm run test:linux -- <id>` passes on a native Linux daemon (dind) under umask 022 and 077. An amd64 run is still open.
+- **AoC account (all solved on the first submission unless noted in EVALUATION.md):**
+  - AoC 2025: complete, 24 stars.
+  - AoC 2019: complete, 50 stars.
+  - AoC 2024: days 1–24 and day 25 part 1; day 25 part 2 (the button) is pending and needs no model call.
+- **AoC conduct:** D014 and AOC.md. No delays within a solve burst, no needless requests, and a bug brake of 10 requests per 10 minutes (session checks in their own window).
+- **Where things live** (private files are ignored by Git; never read or print secrets):
+  - **The Pi is the live host and owns the credentials.** `~boc/boc/.secrets/` holds the AoC cookie, `copilot.json`, `codex.json`, `ntfy-topic-url`, and `healthchecks-ping-url`. The event config is `~boc/boc/var/event-2026.config.json`, with storage `var/event-2026`.
+    - Copilot first, then Codex, on separate pools of 300 per event and 100 per puzzle each.
+    - Alerts are on. `reasoning: "low"` and `assumedMaxOutputTokens: 32000` for both subscriptions (a Copilot reservation is 51), and `sandbox.maxRunSeconds: 240`.
+    - The previous version is kept as `var/event-2026.config.json.before-d031`.
+  - **The Pi also holds the bench storages of 2026-09-30** (`var/bench/pi-2019*`, `hard-*`, `codex-*`), and the source storages copied for them (`var/bench/eval-2019`, `var/bench/finish-2024`, `var/eval-2024-copilot`, `var/eval-2024-codex`).
+  - **On the development Mac:** `.secrets/` was renamed to `.secrets-moved-to-pi/` (ignored): **do not use it**. Refresh tokens can be single-use, so live BoC commands run only on the Pi (D022). The Mac keeps a reference copy of the event config, identical in content, and every earlier storage.
+  - **Configs and credits on the Mac,** each with its own storage under `var/` (native credits spent):
 
     | Config | Purpose | Spent (native credits) |
     | --- | --- | --- |
@@ -41,50 +47,63 @@
     | `eval-2024-copilot` | 2024 days 13–19 | 20.43 |
     | `eval-2024-codex` | 2024 days 20–25 | 10.91 |
     | `bench-luna-2025`, `bench-luna-2024`, `bench-luna-2024b` | luna replays | 1.14, 3.41, 0.51 |
-    | `bench-sol-2025`, `bench-sol-2025b`, `bench-sol-2024` | sol replays | 7.96, 5.00, 22.88; `bench-sol-2024` also holds 3.39 by the operator's decision |
+    | `bench-sol-2025`, `bench-sol-2025b`, `bench-sol-2024` | sol replays | 7.96, 5.00, 22.88 (the held 3.39 was settled at 0) |
     | `smoke-2025` | combined-config smoke test | 2.04 |
     | `drill-2025`, `drill-2025-quota`, `drill-2025-cred` | live failure drills (2026-09-29) | Copilot 4.44 + 0.78 (the held 26.09 was settled at 0); Codex 1.04 |
     | `drill-2025b`, `drill-2025b-quota` | drill rerun after the D024 fixes | Copilot 6.43 + 1.46; Codex 0.88 + 2.02 (the held 13.00 was settled at 0) |
-    | `eval-2019` | AoC 2019, all days: 48/50 (EVALUATION.md) | Copilot 105.63; Codex 3.02 |
-    | `bench-pi-2019` (on the Pi) | Pi replay benchmark, 6 days of 2019 | Copilot 26.54; Codex 0 |
-    | `bench-pi-2019-fast` (on the Pi) | the same after D030 | Copilot 23.91; Codex 0 |
-    | `bench-pi-2019-r-low`, `-r-medium`, `-r-high` (on the Pi) | reasoning-effort replays | Copilot 20.23, 24.54, 26.61; Codex 0 |
-    | `bench-hard-2024-default`, `-low`, `bench-hard-2019-default`, `-low` (on the Pi) | hardest past parts, low against the default | Copilot 25.55, 21.66, 21.52, 11.40; Codex 0 |
-    | `bench-codex-{2019,2024}-{default,low}` (on the Pi) | Codex, low against the default | Codex 7.71, 19.31, 4.95, 5.27 |
-    | `eval-2019b` | 2019 days 11 and 25 after D028: complete | Copilot 2.12; Codex 0 |
-    | `bench-ocr-2019a`, `bench-ocr-2019b` | Codex replay of the letter-art parts | Codex 1.23843; 0 |
+    | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills, and A2b after D026 | Copilot 11.82; Codex 0 |
     | `finish-2024` | AoC 2024 days 2 and 4–12, all first-submission correct | Copilot 24.74; Codex 0 |
-    | `drill-aoc-2024`, `drill-aoc-2024-bogus` (same storage), `drill-aoc-2024-dup` | live AoC drills, and A2b after D026 | Copilot 11.82492; Codex 0 |
+    | `eval-2019` | AoC 2019, all days: 48/50 (EVALUATION.md) | Copilot 105.63; Codex 3.02 |
+    | `eval-2019b` | 2019 days 11 and 25 after D028: complete | Copilot 2.12; Codex 0 |
+    | `bench-ocr-2019a`, `bench-ocr-2019b` | Codex replay of the letter-art parts | Codex 1.24; 0 |
+
+  - **Configs and credits on the Pi,** each with its own storage under `~boc/boc/var/bench/`:
+
+    | Config | Purpose | Spent (native credits) |
+    | --- | --- | --- |
+    | `bench-pi-2019` | Pi replay benchmark, 6 days of 2019 | Copilot 26.54 |
+    | `bench-pi-2019-fast` | the same after D030 | Copilot 23.91 |
+    | `bench-pi-2019-r-low`, `-r-medium`, `-r-high` | reasoning-effort replays | Copilot 20.23, 24.54, 26.61 |
+    | `bench-hard-2024-default`, `-low`, `bench-hard-2019-default`, `-low` | hardest past parts, low against the default | Copilot 25.55, 21.66, 21.52, 11.40 |
+    | `bench-codex-{2019,2024}-{default,low}` | Codex, low against the default | Codex 7.71, 19.31, 4.95, 5.27 |
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
-- **Host.** It sits behind a TLS-intercepting proxy. Prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`. Docker builds need the CA as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy.
-- **Checks.** `npm run check`: 193 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS, the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Development host (Mac).** It sits behind a TLS-intercepting proxy: prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`, and pass the CA to Docker builds as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy. It idle-sleeps; use `caffeinate` for long local runs. The Pi is outside the proxy and needs no CA.
+- **Checks.** `npm run check`: 193 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS (24.21.0 on the Pi), the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
 
 ## Next session: start here
 
-Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md`, and the docs listed in AGENTS.md. Run `npm ci --ignore-scripts` and `npm run check`.
+Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D031), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
-Next concrete task: **finish the Raspberry Pi host (D027, [RPI.md](RPI.md)).** `boc@boc.local` is set up and passes every check (RPI.md, "Verification status"). **The Pi owns the credentials:** the Mac's copy was renamed to `.secrets-moved-to-pi/` (ignored), so live BoC commands now run on the Pi only (D022). Remaining:
+**The production service is running on the Pi. Do not disturb it without the operator.**
 
-- **Done (2026-09-30):**
-  - Every systemd drill passed: `kill -9`, an outside SIGTERM, `systemctl stop`, and a reboot.
-  - Daily checks (D029).
-  - A Pi replay benchmark: 12/12; the Pi is 4.8× slower per core than the Mac, and no run came near the 60-second cap (EVALUATION.md).
-- **Decided (2026-09-30):** `sandbox.maxRunSeconds` is configurable (default 60, at most 540), and the event config on the Pi sets 240.
-- **Done (2026-09-30):** D030 speedups. Model turns went from 4.17 to 2.25 per attempt, time dropped 8–13%, credits about 10%, and accuracy stayed at 12/12 (EVALUATION.md). `boc.service` was stopped for the benchmarks: the operator starts it with `sudo systemctl start boc`.
-- **Reasoning effort (D031, 2026-09-30):** configurable per subscription. On six 2019 days, `low` was 25% faster and 15% cheaper than the provider default, with equal accuracy (12/12 at every level). A replay of the hardest past parts (19 parts) followed: both levels solved 19/19, and `low` was 30% faster and 30% cheaper. A Codex replay (13 parts) followed: `low` was 37% faster and used 62% fewer credits, with one off-by-one wrong answer (2019 day 14 part 2), while the default needed a second attempt after a cut-off response. **Decided and applied (2026-09-30):** the event config on the Pi sets `reasoning: "low"` and `assumedMaxOutputTokens: 32000` for both subscriptions; the previous file is kept as `var/event-2026.config.json.before-d031` on the Pi. A Copilot reservation is now 51 of the per-puzzle 100 (D031).
-- **The operator:** move the system from the SD card to an SSD before 1 December.
-- **Afterwards:** the end-to-end rehearsal (milestone 7).
+- **Look, never change:** `ssh boc@boc.local`, then `systemctl is-active boc`, `journalctl -u boc -n 50`, and `boc status ~/boc/var/event-2026.config.json`. These are safe while it runs.
+- **What needs the operator:**
+  - The agent has no sudo on the Pi (password-protected). Stopping and starting the service (`sudo systemctl stop|start boc`) and any root change are the operator's.
+  - Stop the service before any other BoC process on the Pi (a benchmark, a replay, `ledger`/`submission` commands): two processes must never share the credentials (D022).
+  - A kill as `boc` only makes systemd restart it after 60 s, at most 5 times an hour.
+- **Deploying code to the Pi:** `git pull --ff-only && npm ci --ignore-scripts && npm run build` in `~boc/boc`, then have the operator restart the service (or SIGTERM it as `boc`: systemd restarts it after 60 s). Check `journalctl` for `start check passed`. A new solver image goes over with `deploy/rpi/push-image.sh`, and its ID into the Pi's event config.
+- **Expected in the log:** a `daily check passed` about every 24 hours. The first was due about 24 hours after the 2026-09-30 12:27 CEST start.
 
-The open findings of the live AoC drills were decided and implemented on 2026-09-29 (D026).
+Next concrete tasks, in order:
 
-Operator decision (2026-09-29): every held reservation was settled at 0 (`operator:2026-09-29-operator-instruction-settle-zero`), including the 3.39 in `var/bench/sol-2024` that was kept on 2026-09-28. No reservation is held. Rechecking site rules, provider policy, models, and credit semantics (milestone 7) happens a few days before AoC 2026, not now.
+1. **SSD migration (the operator, before 1 December).** The Pi runs from the SD card. After cloning the SD card to the SSD (or re-flashing and rerunning `deploy/rpi/setup.sh`, the push scripts, and copying `~boc/boc/var/`), run `check.sh --probe` and confirm that `boc.service` comes back with `start check passed`.
+2. **End-to-end rehearsal (milestone 7)** on the Pi, with the operator's go-ahead and the service stopped:
+   - a replay or one past day through the event config's code path;
+   - `boc alert-test`;
+   - a check that the healthchecks.io schedule matches the published 2026 calendar.
+3. **A few days before 1 December (milestone 7):** recheck the AoC rules and automation guidance (AOC.md), provider policy, the models, and credit semantics (FEASIBILITY.md). Set the healthchecks.io cron to the event's day range. Apply system updates and reboot the Pi before the event; automatic reboots are off.
+4. **Optional:**
+   - press AoC 2024 day 25 part 2 (a model-free `boc run --days 25` in a 2024 config on the Pi, with the go-ahead and the service stopped);
+   - an amd64 `npm run test:linux`;
+   - a Codex re-measurement at `low` if the failover ever matters.
 
-Decided (D020, 2026-09-28): keep `gpt-6-sol` as the solving model, with no parallel solving; Anthropic is dropped.
+Settled decisions that still matter:
 
-Other open items:
-
-- an amd64 run of `npm run test:linux` (arm64 passed), and a bare-metal Linux host run before the event.
+- `gpt-6-sol`, no parallel solving, and no Anthropic (D020).
+- Reasoning effort `low` for both providers (D031).
+- A 6-hour retry window after release (D024).
+- One resubmission after an unknown outcome (D026).
 
 Live runs (provider calls, AoC requests, submissions) spend real credits: start them only with the operator's explicit go-ahead in that session, and under supervision. Replay benchmarks never contact AoC, but they still spend model credits. Preserve unknown-charge reservations, and never replace native credits with estimates that can overshoot (D016).
 
@@ -139,8 +158,9 @@ Live runs (provider calls, AoC requests, submissions) spend real credits: start 
 ### 7. AoC 2026 readiness
 
 - [ ] Recheck site rules, event calendar, provider policy, models, and credit semantics.
-- [ ] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills A1–A3 ran live on 2026-09-29: an expired session passes after D025, duplicate protection across storages passes, and a crash during submission loses the part (defect G, fixed by D026).)
+- [x] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Done 2026-09-29/30, including systemd restart drills on the Pi (RPI.md). Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills A1–A3 ran live on 2026-09-29: an expired session passes after D025, duplicate protection across storages passes, and a crash during submission loses the part (defect G, fixed by D026).)
 - [x] Document installation, credential setup, budget configuration, private data handling, operation, and recovery. (`OPERATOR.md`)
+- [x] Set up the unattended host: a Raspberry Pi 5 with `boc.service`, running since 2026-09-30 (D027, RPI.md). The SSD migration is still pending (the operator).
 - [ ] Run an end-to-end rehearsal and obtain any remaining operator-side setup.
 
 ## Verification and handoff discipline
