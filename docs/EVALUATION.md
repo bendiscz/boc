@@ -259,3 +259,20 @@ The follow-up suggested above: the parts that took BoC the most attempts or time
 - **Credits:** `low` used 30% fewer (33.06 against 47.07).
 - **Overall:** with the six easier days above, `low` matched the default on all 31 parts, and was faster and cheaper in every set. This is still one sample per part, and it covers Copilot only; Codex, the failover, is unmeasured.
 
+### Codex: `low` against the default (2026-09-30)
+
+A short replay with Codex alone (`gpt-6-sol`), on the Pi with the service stopped. It covered the 2019 hard set (days 8, 14, 17, and 25; 7 scored parts) and 2024 days 15, 21, and 24 (6 parts), with `assumedMaxOutputTokens` 32000 at both levels and one sample per part, in storage `var/bench/codex-{2019,2024}-{default,low}`.
+
+| Set | Effort | Correct | First submission | Total time | Codex credits |
+| --- | --- | --- | --- | --- | --- |
+| 2019 | default | 7/7 | 7/7 | 549 s | 7.71 |
+| 2019 | low | 7/7 | 6/7 | 370 s | 4.95 |
+| 2024 | default | 6/6 | 6/6 | 502 s | 19.31 |
+| 2024 | low | 6/6 | 6/6 | 297 s | 5.27 |
+
+- **Accuracy:** every part was solved at both levels.
+  - At `low`, 2019 day 14 part 2 was first answered off by one. The program printed an `ANSWER` line for an example and one for the input, and the model proposed the input's value by hand, not through `proposeOnSuccess`. The next attempt was correct. In a live event this costs one wrong answer and its wait, about a minute.
+  - At the default, 2024 day 15 part 2 had a response stopped at the output cap or time limit, and needed a second attempt: 240 s against 33 s at `low`.
+- **Time and credits:** `low` was 37% faster over the 13 parts (667 s against 1051 s) and used 62% fewer credits (10.22 against 27.03).
+- **Codex is much slower than Copilot on the same parts at either level:** for example 2019 day 25 part 1 took 116–298 s against 30–107 s. As the failover, it runs only when Copilot refuses.
+
