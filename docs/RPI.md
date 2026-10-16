@@ -24,9 +24,9 @@ Files in `deploy/rpi/`:
   - This smoke test found the >24.8-day timer bug, fixed in `ec5b3b5`.
   - Restart drills under systemd, 2026-09-30: `kill -9`, an outside SIGTERM, `sudo systemctl stop` (no restart), and `sudo reboot` all passed.
   - Replay benchmark: 12/12 parts on the first submission. The Pi is about 4.8× slower per core than the development Mac, and no program came near the 60-second run cap (EVALUATION.md).
-- **In production since 2026-09-30, 12:27 CEST; SDK maintenance on 2026-10-16:** `boc.service` is enabled but **currently stopped pending the operator's restart**.
+- **In production since 2026-09-30, 12:27 CEST; SDK maintenance on 2026-10-16:** `boc.service` is enabled and **active again after the operator's restart at 2026-10-16 16:00:37 UTC**; its start check passed at 16:00:39 UTC and it is waiting for day 1.
   - Settings unchanged: `gpt-6-sol`, `reasoning: "low"`, `assumedMaxOutputTokens: 32000`, `sandbox.maxRunSeconds: 240` (D031).
-  - The checkout/build is `7ba96e3`, Pi SDK 1.3.0 (D032). Clean install, 211 tests, zero audit findings and `check.sh --probe` all pass on the Pi. Current-model replays passed both parts of a cached day on each provider. A timed manual event run passed readiness and entered waiting; alert-test reported success. See PLAN.md for credits, private evidence and remaining observation.
+  - The build is from `7ba96e3`, Pi SDK 1.3.0 (D032); subsequent checkout changes are documentation-only. Clean install, 211 tests, zero audit findings and `check.sh --probe` all pass on the Pi. Current-model replays passed both parts of a cached day on each provider. A timed manual event run passed readiness and entered waiting; alert-test reported success. See PLAN.md for credits, private evidence and remaining observation.
   - Rollback checkpoint: `var/deploy/pi-1.3.0-20261016/` on the Pi (old revision `81c5fa9`, old dist/lockfile and config; no credential copies). Preserve refreshed credentials and journals when rolling back.
   - Still to do: move from the SD card to an SSD before 1 December (step 1 of this guide), then `check.sh --probe` and a service restart.
 

@@ -1,10 +1,10 @@
 # Development plan and session handoff
 
-## Current state (2026-10-16, SDK rollout maintenance)
+## Current state (2026-10-16, SDK upgrade running in production)
 
 - **Working end to end, and deployed.** BoC's unattended host is the operator's Raspberry Pi 5, `boc@boc.local` (D027, RPI.md). It waits for AoC 2026 (release of day 1: 2026-12-01 05:00 UTC), with a readiness check every day while waiting (D029), then at T−30 and T−5.
-  - **The service is currently stopped for the operator-approved SDK rollout and needs an operator restart.** The operator stopped it on 2026-10-16 at 14:29 UTC; PID is 0 and no BoC/Node process remains. systemd reports `failed` because the graceful SIGTERM shutdown returned 130, not because a process is still running. Daily checks passed through 2026-10-16 before the stop.
-  - The Pi's checkout/build is `7ba96e3` with Pi SDK 1.3.0. Clean install, all 211 tests, build, audit and the full sandbox/toolchain probe passed on the Pi. A supervised current-model replay passed on both providers, followed by a timed event readiness run: `start check passed` at 14:37:42 UTC and waiting for day 1. The timed run stopped cleanly after 20 seconds. Do not claim the systemd service is restarted yet.
+  - **The operator restarted the service on 2026-10-16 at 16:00:37 UTC.** Read-only verification: `active`, `SubState=running`, PID 63994; `start check passed` at **16:00:39 UTC**, then waiting for day 1. Daily checks passed through 2026-10-16 before the maintenance stop; observe the first post-upgrade daily check around 2026-10-17 16:00 UTC.
+  - The Pi is built from `7ba96e3` with Pi SDK 1.3.0; checkout `8838e60` adds deployment documentation only. Clean install, all 211 tests, build, audit and the full sandbox/toolchain probe passed on the Pi. A supervised current-model replay passed on both providers, followed by a timed event readiness run: `start check passed` at 14:37:42 UTC and waiting for day 1. The timed run stopped cleanly after 20 seconds. The subsequent systemd restart also passed readiness (above).
 - **Commands:**
   - `run`, `status`, `views`, `--tui`, `events.log`;
   - the ledger and submission operator commands;
@@ -75,7 +75,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D032), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
-**The SDK upgrade is deployed on the Pi, but the service is stopped for maintenance. Next: the operator runs `sudo systemctl start boc`, then verify `systemctl is-active boc` and a new `start check passed` in `journalctl -u boc`. Check the next daily readiness result before closing the rollout.**
+**The SDK upgrade is deployed and `boc.service` is active with a passing start check. Do not run another BoC process or disturb it. Next read-only check: confirm the first post-upgrade `daily check passed` around 2026-10-17 16:00 UTC.**
 
 - **Look, never change:** `ssh boc@boc.local`, then `systemctl is-active boc`, `journalctl -u boc -n 50`, and `boc status ~/boc/var/event-2026.config.json`. These are safe while it runs.
 - **What needs the operator:**
@@ -87,7 +87,7 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D032), and the docs 
 
 ### Dependency upgrade requested 2026-10-15
 
-The operator authorized implementation after the assessment. See [Dependency upgrade assessment and plan](DEPENDENCY-UPGRADE.md), FEASIBILITY.md (Pi 1.3.0), and D032. The development Pi family is now **1.3.0**, with the obsolete chord override removed; Node 24 LTS, TypeScript 6, existing provider identities, configuration/journal formats and production model/settings are retained. **The upgraded build is now deployed on the Pi; the operator stopped the service first, and it remains stopped pending their restart.**
+The operator authorized implementation after the assessment. See [Dependency upgrade assessment and plan](DEPENDENCY-UPGRADE.md), FEASIBILITY.md (Pi 1.3.0), and D032. The development Pi family is now **1.3.0**, with the obsolete chord override removed; Node 24 LTS, TypeScript 6, existing provider identities, configuration/journal formats and production model/settings are retained. **The upgraded build is deployed and the operator has restarted the service; its fresh start check passed.**
 
 Verification (Node 24.21.0 / npm 11.19.0): baseline at `92d08fe` passed 193 tests; upgraded clean `npm ci --ignore-scripts && npm run check` passes **211 tests**, lint without warnings, type checking and build. `npm audit` reports zero findings; family packages deduplicate correctly. The narrow fixture migration handles `Models.getAuth`'s `AnyModel` input and rejects non-chat models. Eighteen new actual-provider wire tests intercept every fetch (no real network/model calls), confirming catalogs (`gpt-6-sol` and `gpt-6.1-sol`), caps, no retries/WebSockets, cache/reasoning usage, accounting, cancellation, tool round trips, malformed/truncated streams and awaited lifecycle events. An independent static review found no blocking regression.
 
@@ -101,10 +101,12 @@ The separate compatible patch increment updates Zod to **4.6.7**, Biome to **2.5
 - Fast-forwarded to `7ba96e3`, ran `npm ci --ignore-scripts`, `npm run check` (211/211), `npm audit` (zero findings), and `deploy/rpi/check.sh var/event-2026.config.json --probe` (all checks/toolchains passed). Same pinned solver image; event config SHA-256 matches the pre-deployment backup. SD-card migration remains pending.
 - Sequential current-model (`gpt-6-sol`, `low`) replays of **2019 day 12**, separate private storage per provider, event/per-puzzle limit 100 each (within the standing allowance), at most one attempt and four turns per part, with a three-minute run abort. All four parts were correct on the first proposal, no errors or held reservations. Copilot: **2.58887** native credits (5.8/8.1 seconds per part); Codex: **0.8269** (6.6/8.1 seconds). Charges are derived from usage at the existing configured native rates, not independently reconciled against provider billing. No replay requests contacted AoC.
   - Configs: `var/upgrade-sdk-1.3.0-{copilot,codex}-20261016.config.json`; storages: `var/bench/upgrade-sdk-1.3.0-{copilot,codex}-20261016`, all on the Pi and ignored.
-- A bounded manual run of the unchanged event config passed provider/AoC readiness and entered waiting at **14:37:42 UTC**; SIGTERM at 20 seconds saved state and exited cleanly (timeout status 124 as expected). `boc alert-test` reported successful ntfy push and healthchecks success ping. The operator still needs to confirm phone/dashboard receipt. An HTTP 502 occurred during the earlier old-service shutdown alert, but the subsequent readiness/test deliveries reported no failure.
+- A bounded manual run of the unchanged event config passed provider/AoC readiness and entered waiting at **14:37:42 UTC**; SIGTERM at 20 seconds saved state and exited cleanly (timeout status 124 as expected). `boc alert-test` reported successful ntfy push and healthchecks success ping. The operator confirmed receipt of the started, operator-stopped and test-alert phone notifications. The healthchecks ping was accepted, but dashboard confirmation was not reported. An HTTP 502 occurred during the earlier old-service shutdown alert, but the subsequent readiness/test deliveries reported no failure.
 - Event spent/reserved credits remain **0/0 for both providers**. Production model, reasoning, native rates, budgets and solver image are unchanged. No new-model calls or answer submissions were made. No Node/BoC process was left running.
 
-**Next concrete action:** the operator starts `boc.service`; verify its fresh start check and next daily check. New-model entitlement, native pricing/tiering and calibration remain unverified; do not change the production model. Pi's newer `openai` ChatGPT OAuth path remains a separate migration. The operator-owned SSD migration remains the primary hardware prerequisite.
+- The operator restarted the service at **16:00:37 UTC**; verified `active` / `running` (PID 63994), `start check passed` at **16:00:39 UTC**, and waiting for day 1. Event spent/reserved credits remain 0/0 for both providers. The three confirmed phone notifications are expected from the manual readiness run (started/stopped) and explicit alert-test.
+
+**Next concrete action:** check the first post-upgrade daily readiness result around 2026-10-17 16:00 UTC, read-only; the service is running and must not be disturbed. New-model entitlement, native pricing/tiering and calibration remain unverified; do not change the production model. Pi's newer `openai` ChatGPT OAuth path remains a separate migration. The operator-owned SSD migration remains the primary hardware prerequisite.
 
 Next operational tasks, in order:
 

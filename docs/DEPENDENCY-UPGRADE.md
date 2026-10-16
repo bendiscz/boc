@@ -1,6 +1,6 @@
 # Dependency upgrade assessment and plan
 
-Assessed and implementation authorized 2026-10-15; deployed to the Pi on 2026-10-16. **Pi 1.3.0 passes offline checks and supervised current-model live smoke tests. The service is stopped pending the operator's restart; production model/settings remain unchanged.** Verification details are in FEASIBILITY.md (Pi 1.3.0) and PLAN.md.
+Assessed and implementation authorized 2026-10-15; deployed to the Pi on 2026-10-16. **Pi 1.3.0 passes offline checks and supervised current-model live smoke tests. The operator restarted the service on 2026-10-16; it is active with a passing start check at 16:00:39 UTC. Production model/settings remain unchanged.** Verification details are in FEASIBILITY.md (Pi 1.3.0) and PLAN.md.
 
 ## Recommendation
 
@@ -83,11 +83,12 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 - [x] The operator stops `boc.service` on the Pi. Verify it is stopped before any other BoC process or state-changing command; never use the Mac's old credentials.
 - [x] Record deployed revision/build, image ID and private config backup on the Pi. Preserve journals and credential files in place; do not print or copy their contents to development artifacts.
 - [x] Deploy with `git pull --ff-only`, `npm ci --ignore-scripts`, and build on Node 24. Run offline config/probe checks, then the approved supervised provider checks/replays on the Pi.
-- [ ] Restart through the operator. Confirm `start check passed`, waiting state, truthful spent/reserved credits, alert delivery and the next daily readiness check. Keep an observation window before considering the rollout complete.
+- [x] Restart through the operator. Confirm `start check passed`, waiting state, truthful spent/reserved credits and alert delivery (2026-10-16 16:00:39 UTC; operator confirmed phone notifications).
+- [ ] Observe the first post-upgrade daily readiness check, due around 2026-10-17 16:00 UTC. Keep an observation window before considering the rollout complete.
 - [ ] On failure, stop the service and return to the recorded application revision/lockfile/build and compatible config, without resetting journals or budgets. **Do not restore stale OAuth tokens:** refresh-token rotation must survive rollback. An incompatible credential format requires operator reauthorization, not reuse of invalidated credentials. Retain/reconcile unknown charges.
 
 ## Acceptance and next action
 
 Done means reproducible pinned installation on Node 24, green offline checks/CI, no known audit findings (or explicitly documented exceptions), preserved safety/recovery behavior, catalog support for the selected new chat models, and separately authorized live evidence before changing production models. Deployment and new-model activation are distinct gates.
 
-**Next concrete task:** the operator starts `boc.service`; confirm a new start check, alert receipt and the next daily readiness result. The Pi now has build `7ba96e3`, all 211 tests/audit/probes pass locally and on the Pi, and Linux/macOS CI is green. Both providers passed sequential current-model replays (Copilot 2.58887 native credits, Codex 0.8269; zero held reservations), and a timed manual event run passed readiness. Event spending/configuration remain unchanged. Private rollback evidence is under `var/deploy/pi-1.3.0-20261016/` on the Pi. No new-model calls or answer submissions were made; phase 4's new-model entitlement/pricing/calibration gates remain pending. Never start another BoC process while the service runs.
+**Next concrete task:** observe the first post-upgrade daily readiness result around 2026-10-17 16:00 UTC. The service is active and its fresh start check passed; the operator confirmed the three maintenance/test phone notifications. The Pi now has build `7ba96e3`, all 211 tests/audit/probes pass locally and on the Pi, and Linux/macOS CI is green. Both providers passed sequential current-model replays (Copilot 2.58887 native credits, Codex 0.8269; zero held reservations), and a timed manual event run passed readiness. Event spending/configuration remain unchanged. Private rollback evidence is under `var/deploy/pi-1.3.0-20261016/` on the Pi. No new-model calls or answer submissions were made; phase 4's new-model entitlement/pricing/calibration gates remain pending. Never start another BoC process while the service runs.
