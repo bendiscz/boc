@@ -11,14 +11,14 @@
 #   BOC_REPO      git URL to clone          (default https://github.com/bendiscz/boc.git)
 #   BOC_HOME      home of the boc user      (default /home/boc)
 #   BOC_CONFIG    config path for the unit  (default $BOC_HOME/boc/var/event-2026.config.json)
-#   NODE_VERSION  Node.js 24 release        (default 24.21.0)
+#   NODE_VERSION  supported Node.js release (default 26.11.1; 24.21.0 rollback)
 #   BOC_FIREWALL  1 to install ufw with SSH-only inbound (default 1)
 set -eu
 
 BOC_REPO=${BOC_REPO:-https://github.com/bendiscz/boc.git}
 BOC_HOME=${BOC_HOME:-/home/boc}
 BOC_CONFIG=${BOC_CONFIG:-$BOC_HOME/boc/var/event-2026.config.json}
-NODE_VERSION=${NODE_VERSION:-24.21.0}
+NODE_VERSION=${NODE_VERSION:-26.11.1}
 BOC_FIREWALL=${BOC_FIREWALL:-1}
 HERE=$(cd "$(dirname "$0")" && pwd)
 

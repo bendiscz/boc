@@ -21,7 +21,7 @@ The target is Advent of Code 2026, with development and evaluation against earli
 
 The offline TypeScript foundation is implemented: configuration checking, exact credit representation, conservative Pi settings, a guarded provider-dispatch boundary, a durable four-counter credit ledger, a durable puzzle run-state machine with private artifact views, an AoC transport, a constrained solver agent loop with a two-part solve orchestrator and budget-aware subscription selection, a networkless Docker executor with a toolchain image, and offline tests. GitHub Copilot passed a supervised live calibration on 2026-09-27 (AoC 2025 days 1–2 solved; BoC's charged credits matched GitHub's figure within 0.1 %). ChatGPT/Codex passed the same day (AoC 2025 days 3–4; token totals matched OpenAI's dashboard exactly). Both are enabled. Anthropic was dropped (D020).
 
-Requires Node.js 24.21+ within the 24 LTS line and npm:
+Development defaults to Node.js **26.11.1** and npm; **24.21.0+ within 24.x** remains supported for production rollback. Node 26 is Current until its scheduled LTS transition on 2026-10-28. The Pi runtime upgrade is pending operator maintenance; see [model and Node rollout](docs/MODEL-NODE-UPGRADE.md).
 
 ```sh
 npm ci --ignore-scripts

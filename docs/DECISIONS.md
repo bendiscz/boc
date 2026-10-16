@@ -279,3 +279,11 @@ Offline tests through the installed providers establish SSE-only requests, no im
 
 The SDK catalogs now expose `gpt-6.1-sol` on both supported providers. Do not automatically activate it, inherit API-dollar catalog prices as subscription credits, or migrate `openai-codex` to Pi's newer `openai` ChatGPT OAuth flow. New-model entitlement, pricing/tiering, calibration and production rollout remain separately supervised gates. The production `gpt-6-sol` / `low` configuration and solver image stay unchanged. Existing calibration is historical evidence, not live validation of this SDK upgrade.
 
+## D033 — Node 26 development target with Node 24 rollback; isolate model evaluation
+
+On 2026-10-16 the operator requested GPT-6.1 Sol evaluation/potential activation and an upgrade to Node 26. Development and new host setup target exactly **26.11.1**, with `@types/node` 26.6.5. Retain **24.21.0+ in 24.x** as a tested rollback line; support **26.11.1+ in 26.x**, not intervening odd-major lines. CI covers both versions on Linux/macOS. This supersedes D008's exclusive Node 24 pin, not BoC's safety boundaries.
+
+Node 26 is Current on the assessment date, with LTS scheduled for 2026-10-28; do not describe it as already LTS. The request permits preparing this transition now. The Pi remains on Node 24 until operator-controlled maintenance/root installation, with a verified rollback archive. The existing solver image/toolchain is independent of the trusted host runtime and stays unchanged in this increment.
+
+First compare GPT-6 Sol and GPT-6.1 Sol on the existing Pi runtime, then validate the selected model under Node 26, so simultaneous changes do not confound results. Catalog support and cheaper published cache rates do not establish account entitlement, accuracy, latency or native billing reconciliation. Keep the production model/config unchanged unless the bounded comparison and pricing/tiering gates pass. See MODEL-NODE-UPGRADE.md for sources, aggregate native-credit allowances, private evidence, maintenance and rollback steps.
+

@@ -57,7 +57,7 @@ Files in `deploy/rpi/`:
 - **Updates:** a full system upgrade, then unattended **security** updates only, with automatic reboots disabled (`/etc/apt/apt.conf.d/52boc-unattended`).
 - **Clock:** enables NTP and `systemd-time-wait-sync`, so that the service starts only on a synchronized clock.
 - **Docker Engine:** from Docker's Debian repository. The daemon log driver is `local`, and solver containers are removed after every run anyway.
-- **Node.js:** the official Node.js 24 arm64 build in `/usr/local`, verified against the release's `SHASUMS256.txt`. The version is set by `NODE_VERSION`, default 24.21.0.
+- **Node.js:** the official arm64 build in `/usr/local`, verified against the release's `SHASUMS256.txt`. New setup defaults to **26.11.1** (`NODE_VERSION` override); **24.21.0** remains a tested rollback target. The existing Pi still uses Node 24 until the operator-controlled upgrade in MODEL-NODE-UPGRADE.md. Node 26 is Current until its scheduled LTS transition on 2026-10-28.
 - **The `boc` user:** home directory mode `0700`, in the `docker` group. If you created `boc` as the admin account in Raspberry Pi Imager, the script reuses it. The service account then also has `sudo`, protected by a password; that isolates no less than membership in the `docker` group already does. Your `authorized_keys` is copied to it, so the push scripts can connect as `boc@<pi>`. Membership in the `docker` group is root-equivalent, which is one reason the Pi runs nothing else.
 - **BoC itself:** a checkout in `~boc/boc`, built with `npm ci --ignore-scripts && npm run build`. A `boc` wrapper goes in `/usr/local/bin`.
 - **Service:** `/etc/systemd/system/boc.service`, installed but not enabled.
@@ -94,7 +94,7 @@ sh ~/boc/deploy/rpi/check.sh ~/boc/var/event-2026.config.json --probe
 
 The script checks the following. It is offline, except that `--probe` runs synthetic containers, and it never reads credential contents.
 
-- Node.js 24 is installed, Docker is reachable, and **Docker's memory limits are supported**.
+- Supported Node.js (26.11.1+ in 26.x, or rollback 24.21.0+ in 24.x) is installed, Docker is reachable, and **Docker's memory limits are supported**.
 - The clock is NTP-synchronized.
 - There is at least 10 GiB free, on a disk other than the SD card.
 - The config is valid, and the solver image is present.

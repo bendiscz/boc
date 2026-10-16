@@ -17,7 +17,11 @@ bad() { printf 'FAIL  %s\n' "$*"; FAIL=1; }
 note() { printf 'note  %s\n' "$*"; }
 
 NODE=$(node --version 2>/dev/null || echo none)
-case "$NODE" in v24.*) ok "Node.js $NODE" ;; *) bad "Node.js 24 is required (found $NODE)" ;; esac
+if node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); process.exit((major === 24 && minor >= 21) || (major === 26 && (minor > 11 || (minor === 11 && patch >= 1))) ? 0 : 1)' 2>/dev/null; then
+  ok "Node.js $NODE"
+else
+  bad "Node.js 26.11.1+ (26.x) or rollback 24.21.0+ (24.x) is required (found $NODE)"
+fi
 
 if docker info >/dev/null 2>&1; then
   ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null) reachable as $(id -un)"

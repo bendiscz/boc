@@ -197,7 +197,10 @@ test("live mode sleeps until release before the first request, then stops after 
   const results = await f.run();
   assert.equal(results[0]?.part2, "solved");
   const firstPuzzle = f.aocCalls.find((c) => c.startsWith("puzzle"));
-  assert.ok(firstPuzzle?.endsWith("@2025-12-01T05:00:01.000Z"), firstPuzzle);
+  assert.ok(
+    firstPuzzle?.endsWith("@2025-12-01T05:00:01.000Z"),
+    firstPuzzle ?? "No puzzle request.",
+  );
   assert.deepEqual(
     f.aocCalls
       .slice(0, 2)
@@ -703,7 +706,10 @@ test("a wait of months before the event sleeps in short steps, never past the re
   assert.equal(results[0]?.part2, "solved");
   assert.ok(f.sleeps.length > 80_000 && f.sleeps.every((ms) => ms <= 60_000));
   const firstPuzzle = f.aocCalls.find((c) => c.startsWith("puzzle"));
-  assert.ok(firstPuzzle?.endsWith("@2025-12-01T05:00:01.000Z"), firstPuzzle);
+  assert.ok(
+    firstPuzzle?.endsWith("@2025-12-01T05:00:01.000Z"),
+    firstPuzzle ?? "No puzzle request.",
+  );
   assert.deepEqual(
     f.aocCalls
       .slice(0, 2)

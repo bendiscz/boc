@@ -6,7 +6,7 @@
   "type": "module",
   "license": "Unlicense",
   "engines": {
-    "node": ">=24.21.0 <25"
+    "node": ">=24.21.0 <25 || >=26.11.1 <27"
   },
   "bin": {
     "boc": "dist/main.js"
@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.5",
     "typescript": "6.0.3"
   },
   "overrides": {

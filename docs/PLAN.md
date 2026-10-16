@@ -73,7 +73,7 @@
 
 ## Next session: start here
 
-Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D032), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
+Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D033), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
 **The SDK upgrade is deployed and `boc.service` is active with a passing start check. Do not run another BoC process or disturb it. Next read-only check: confirm the first post-upgrade `daily check passed` around 2026-10-17 16:00 UTC.**
 
@@ -106,7 +106,17 @@ The separate compatible patch increment updates Zod to **4.6.7**, Biome to **2.5
 
 - The operator restarted the service at **16:00:37 UTC**; verified `active` / `running` (PID 63994), `start check passed` at **16:00:39 UTC**, and waiting for day 1. Event spent/reserved credits remain 0/0 for both providers. The three confirmed phone notifications are expected from the manual readiness run (started/stopped) and explicit alert-test.
 
-**Next concrete action:** check the first post-upgrade daily readiness result around 2026-10-17 16:00 UTC, read-only; the service is running and must not be disturbed. New-model entitlement, native pricing/tiering and calibration remain unverified; do not change the production model. Pi's newer `openai` ChatGPT OAuth path remains a separate migration. The operator-owned SSD migration remains the primary hardware prerequisite.
+### GPT-6.1 Sol and Node 26 requested (2026-10-16, D033)
+
+See [Model comparison and Node rollout](MODEL-NODE-UPGRADE.md). **The service is active on Node 24.21.0 / GPT-6 Sol; no new-model call or Pi runtime/config change has been made.** The operator must stop it before the live comparison, then perform the root-owned runtime installation.
+
+- Development defaults to **Node 26.11.1**, Node types **26.6.5**; engines retain 24.21.0+ within 24.x for rollback. New Pi setup defaults to 26.11.1; preflight checks minimum versions and excludes odd/unsupported majors. CI now covers both versions on Linux and macOS.
+- Local clean installs, lint, type checks, **212 tests**, build and audit pass on Node 26.11.1 and Node 24.21.0. Docker executor/toolchain probe passes with the Node 26 host and unchanged solver image. A new synthetic preflight-predicate regression covers accepted/rejected version boundaries. New typings required only two non-undefined assertion diagnostics in tests; application source is unchanged. CI confirmation is pending push.
+- Official Node 26.11.1 and rollback Node 24.21.0 arm64 archives are staged on the Pi at `var/deploy/node26-20261016/` and checked against official SHA-256 sums. The extracted candidate reports v26.11.1; system `/usr/local/bin/node` remains v24.21.0. Do not run the full root setup script just to replace Node.
+- Published GPT-6.1 Sol input/output rates match Sol; cached input is halved: Copilot short-context native rates input/cacheRead/cacheWrite/output **200/10/250/1000** per million, long-context **400/20/500/1500**; Codex Standard **50/2.5/0/250**. Official sources and account/tiering caveats are in the rollout doc. Live entitlement and performance remain untested.
+- Planned sequential replay comparison: 2019 days 8/14/25 and 2024 days 15/24, old/new models at `low`, same output assumptions; aggregate allowance at most **300 native credits per provider**, best effort, split over four 75-credit configs. No AoC traffic/submissions, conservative pre-dispatch short-context bound, no parallel credential use. Isolate model tests on Node 24 before testing Node 26. Do not switch production without passing the comparison and pricing/tiering gates.
+
+**Next concrete action:** confirm the Node-support CI, then the operator stops `boc.service` for model comparison and Node maintenance. The service must not be disturbed by the agent. If no maintenance occurs first, check the next daily readiness result around 2026-10-17 16:00 UTC read-only. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
 
 Next operational tasks, in order:
 
