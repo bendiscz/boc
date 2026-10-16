@@ -22,7 +22,7 @@
   - Speedups (D030): an input preview, `proposeOnSuccess`, concurrent release reads, a 1 s release margin, and warm containers.
   - Configurable reasoning effort, `low` in the event config (D031), and a configurable run cap, `sandbox.maxRunSeconds` (default 60; 240 on the Pi).
 - **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance. No reservation is held anywhere (all were settled at 0 on 2026-09-29 on the operator's instruction).
-- **Providers and model:** GitHub Copilot and ChatGPT/Codex, calibrated (FEASIBILITY.md). `gpt-6-sol` on both, Copilot first and Codex as failover; no parallel solving; Anthropic is dropped (D020).
+- **Providers and model:** GitHub Copilot and ChatGPT/Codex, calibrated adapters (FEASIBILITY.md). The stopped event config now selects **`gpt-6.1-sol` on both** (D034), Copilot first and Codex as failover; no parallel solving; Anthropic is dropped (D020). Native rates include Copilot's long-context tier; cache reads are 10 Copilot / 2.5 Codex per million. New dashboard reconciliation remains unverified.
 - **Sandbox.** The image `boc-solver:dev` is `sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd` (arm64, rebuilt 2026-09-29 for D028), with `uv` and `advent-of-code-ocr` hash-pinned (`sandbox/*-requirements.txt`). It is loaded on the Pi, and every private config points to it.
   - `npm run test:executor -- <id> --toolchains` passes on Docker Desktop and on the Pi (bare-metal Linux, 16K pages), including the session checks.
   - `npm run test:linux -- <id>` passes on a native Linux daemon (dind) under umask 022 and 077. An amd64 run is still open.
@@ -34,7 +34,7 @@
 - **Where things live** (private files are ignored by Git; never read or print secrets):
   - **The Pi is the live host and owns the credentials.** `~boc/boc/.secrets/` holds the AoC cookie, `copilot.json`, `codex.json`, `ntfy-topic-url`, and `healthchecks-ping-url`. The event config is `~boc/boc/var/event-2026.config.json`, with storage `var/event-2026`.
     - Copilot first, then Codex, on separate pools of 300 per event and 100 per puzzle each.
-    - Alerts are on. `reasoning: "low"` and `assumedMaxOutputTokens: 32000` for both subscriptions (a Copilot reservation is 51), and `sandbox.maxRunSeconds: 240`.
+    - Alerts are on. `reasoning: "low"` and `assumedMaxOutputTokens: 32000` for both subscriptions, and `sandbox.maxRunSeconds: 240`. Tier-aware Copilot minimum attempt headroom is now **78**, Codex **12.6**, within unchanged 100/puzzle budgets; this can cause earlier Copilot failover.
     - The previous version is kept as `var/event-2026.config.json.before-d031`.
   - **The Pi also holds the bench storages of 2026-09-30** (`var/bench/pi-2019*`, `hard-*`, `codex-*`), and the source storages copied for them (`var/bench/eval-2019`, `var/bench/finish-2024`, `var/eval-2024-copilot`, `var/eval-2024-codex`).
   - **On the development Mac:** `.secrets/` was renamed to `.secrets-moved-to-pi/` (ignored): **do not use it**. Refresh tokens can be single-use, so live BoC commands run only on the Pi (D022). The Mac keeps a reference copy of the event config, identical in content, and every earlier storage.
@@ -118,9 +118,11 @@ See [Model comparison and Node rollout](MODEL-NODE-UPGRADE.md). **The service is
 
 The operator has now stopped the service. Same-runtime comparison on Node 24 is complete: GPT-6.1 Sol **9/9 scored parts per provider**, versus Sol **7/9 Copilot, 8/9 Codex**, under the same one-attempt/six-turn cap. Incomplete old-model attempts made no wrong proposals; do not call this general accuracy proof. New-model credits: Copilot **14.57630** vs 17.99952; Codex **4.41085** vs 6.39848; not consistently faster. All charges derived at published rates, no dashboard reconciliation or held charges. Max serialized context 52073 bytes (200000-byte pre-dispatch ceiling), max reported input 8166 tokens, max actual/estimate ratio <0.039. Eight configs/storage/summary names and interpretation are in MODEL-NODE-UPGRADE.md. Completed allocations were closed at actual spend (total **32.57582 Copilot / 10.80933 Codex**) to leave at most 100 per provider for target-runtime smoke within the aggregate 300 allowance.
 
-D034 recommends GPT-6.1 Sol on both providers, conditional on smoke/readiness. Added optional `estimate.longContext` tier support: worst-case rates for reservations/cutoffs/minimum attempt headroom; exact usage tier (including cache, >272000) for settlement. Copilot minimum headroom becomes 78 within the unchanged 100/puzzle budget; earlier failover is the safety tradeoff. All **216 tests** pass locally on Node 24 and 26, zero audit findings; independent read-only review found no issue. CI/deployment of this feature is pending. Production model config and global Pi Node are still unchanged; an installation command using the staged verified Node archive has been supplied to the operator.
+D034 recommends GPT-6.1 Sol on both providers, conditional on smoke/readiness. Added optional `estimate.longContext` tier support: worst-case rates for reservations/cutoffs/minimum attempt headroom; exact usage tier (including cache, >272000) for settlement. Copilot minimum headroom becomes 78 within the unchanged 100/puzzle budget; earlier failover is the safety tradeoff. All **216 tests** pass locally on Node 24 and 26, zero audit findings; independent read-only review found no issue. All four CI jobs passed at `27de39f` ([run 38934703130](https://github.com/bendiscz/boc/actions/runs/38934703130)), and the Pi is built from that revision. On the private official Node 26.11.1 candidate on the Pi, clean install, all **216 tests**, build/audit (zero findings) and full sandbox/toolchain preflight passed. Selected-model smoke on cached 2019 day 12 passed all four parts on the first proposal: **2.51428 Copilot / 1.12795 Codex**, no holds. The event config now selects GPT-6.1 Sol and its verified tier-aware rate policy; identity/order/budgets/low/output/sandbox/alerts are unchanged. A 20-second manual event run under the private Node 26 candidate passed readiness at **16:52:03 UTC** and entered waiting; event spent/reserved remains 0/0. All comparison/smoke allocations are closed at spent, cumulative **35.09010 Copilot / 11.93728 Codex**. Private paths and details are in MODEL-NODE-UPGRADE.md.
 
-**Next concrete action:** finish green-CI pricing deployment and selected-model smoke under the staged Node 26 candidate; operator installs Node 26 globally; then safely switch the model/rates and verify readiness before operator restart. Do not claim global Node 26 or a production model switch yet. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
+**Global `/usr/local/bin/node` still reports v24.21.0**, verified after the candidate checks. The service is stopped and no BoC/Node process remains. The operator has been given a sudo command to install the staged verified archive. Do not confuse candidate success with completion of the global upgrade. The Mac's ignored reference config is synced with a local reference backup; credentials remain on the Pi.
+
+**Next concrete action:** the operator installs the staged checksum-verified Node 26 archive into `/usr/local` with sudo; verify the global binary, rerun preflight/readiness under it, then the operator restarts the service. Model config switch is complete; global runtime upgrade and service restart are not. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
 
 Next operational tasks, in order:
 
@@ -137,7 +139,7 @@ Next operational tasks, in order:
 
 Settled decisions that still matter:
 
-- `gpt-6-sol`, no parallel solving, and no Anthropic (D020).
+- `gpt-6.1-sol` on both providers (D034), no parallel solving, and no Anthropic (D020).
 - Reasoning effort `low` for both providers (D031).
 - A 6-hour retry window after release (D024).
 - One resubmission after an unknown outcome (D026).

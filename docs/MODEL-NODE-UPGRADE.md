@@ -1,6 +1,6 @@
 # GPT-6.1 Sol comparison and Node 26 rollout
 
-Requested 2026-10-16. **The operator stopped the service; the same-runtime model comparison is complete.** The Pi's global runtime is still Node 24.21.0 (verified over SSH), and the event config still selects GPT-6 Sol pending target-runtime smoke checks. The reported `node -v` of 26.11.1 did not reflect `/usr/local/bin/node` on the Pi. Global installation needs the operator's sudo action; a private Node 26 candidate and rollback archive are staged.
+Requested 2026-10-16. **The operator stopped the service; the same-runtime model comparison is complete.** The Pi's global runtime is still Node 24.21.0 (verified over SSH), and the event config now selects **GPT-6.1 Sol on both providers**, after successful target-runtime smoke checks. The reported `node -v` of 26.11.1 did not reflect `/usr/local/bin/node` on the Pi. Global installation needs the operator's sudo action; a private Node 26 candidate and rollback archive are staged.
 
 ## Node 26: offline implementation
 
@@ -59,7 +59,15 @@ All charges were usage-derived at published native rates, **not independently re
 
 Private configs: `var/sol61-{copilot,codex}-{old,new}-{2019,2024}-20261016.config.json`; storage under `var/bench/` with the same stem; driver `var/sol61-compare-20261016.mjs`; safe metric summaries/index under `var/deploy/sol61-node26-20261016/`. All completed allocations were closed by lowering event/per-puzzle limits to their final spent amounts, without touching journals. Total comparison spend: **32.57582 Copilot** and **10.80933 Codex**. A subsequent smoke cap of 100 per provider keeps cumulative authorized exposure below 300 per provider.
 
-**Selection:** recommend GPT-6.1 Sol for both providers, conditional on target-runtime smoke and readiness. D034 adds optional long-context rates: reserve/cut off at worst category rates, settle at the tier selected by reported input including cache (strictly above threshold). Copilot production must explicitly configure 272000 and the published high-tier rates; its conservative minimum attempt headroom rises to 78 credits. The new feature passes 216 local tests on both Node versions; independent read-only review found no issue. New code CI and Pi deployment remain pending before production config changes.
+**Selection applied:** GPT-6.1 Sol is configured for both providers after passing target-runtime smoke and readiness. D034 adds optional long-context rates: reserve/cut off at worst category rates, settle at the tier selected by reported input including cache (strictly above threshold). Copilot production must explicitly configure 272000 and the published high-tier rates; its conservative minimum attempt headroom rises to 78 credits. The feature passes **216 tests** locally on both Node versions and on the Pi's private Node 26 runtime. Independent read-only review found no issue; all four Linux/macOS × Node 24/26 CI jobs passed at `27de39f` ([run 38934703130](https://github.com/bendiscz/boc/actions/runs/38934703130)). The Pi is built from that revision.
+
+### Target-runtime verification and config switch
+
+Using the staged official Node **26.11.1** arm64 candidate on the Pi (not the still-24 global binary), clean install, all 216 tests, build, audit (zero findings) and full sandbox/toolchain preflight passed. Sequential GPT-6.1 Sol replays of cached 2019 day 12 passed both parts on the first proposal on each provider using the final tier-aware pricing policy. Charges: **2.51428 Copilot / 1.12795 Codex**, no holds. All test allocations are now closed at actual spending. Cumulative comparison plus smoke: **35.09010 Copilot / 11.93728 Codex**, below the aggregate 300/provider allowance.
+
+The event config was changed atomically while the service was stopped, after checking the old checksum. Only model/rate policy changed: both `gpt-6.1-sol`; Copilot cache-read 10 plus the 272000 long tier; Codex cache-read 2.5; new pricing labels. Identities, order, credentials, budgets, `low`, output 32000, alerts and sandbox are preserved. Verified minimum attempt headroom: Copilot **78**, Codex **12.6**. Private rollback/config/build checkpoints are under `var/deploy/sol61-node26-20261016/`; the Mac's ignored reference config is synced with its own reference backup. No secret contents were read/printed/copied.
+
+A 20-second manual event run under the private Node 26 candidate passed readiness at **2026-10-16 16:52:03 UTC**, entered waiting and stopped cleanly (timeout 124); no alert delivery error was reported. Event spent/reserved remains **0/0 for both providers**, with no Node process left running. **Global `/usr/local/bin/node` still reports 24.21.0**. Candidate success is not a completed global upgrade; operator sudo installation and service restart remain pending.
 
 ## Pi maintenance sequence and operator actions
 
@@ -72,4 +80,4 @@ Private configs: `var/sol61-{copilot,codex}-{old,new}-{2019,2024}-20261016.confi
 
 ## Next concrete task
 
-Complete green CI/deployment of long-context accounting, verify the selected model under the private Node 26 candidate, and have the operator install the staged verified Node 26 archive into `/usr/local`. Only after successful smoke/readiness checks, update the event config model/rate policy and have the operator restart the service. The service is currently stopped; global Node and event config remain unchanged.
+The remaining blocking action is the operator's **global Node 26 installation** using the staged checksum-verified archive and sudo. The service is stopped, the event model/rate config is switched, and all candidate-runtime checks pass. Verify `/usr/local/bin/node -v` over SSH, rerun global-runtime preflight/readiness, then have the operator restart the service. Never claim global Node 26 from a development-shell or private-candidate version check.
