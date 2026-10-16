@@ -10,7 +10,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { addCredits, scaleCredits, tokenCost } from "../budget/credits.ts";
-import { createEstimatingMeter, estimateSettings } from "../budget/estimate.ts";
+import { createEstimatingMeter, estimateSettings, reservationRates } from "../budget/estimate.ts";
 import type { BocConfig } from "../config.ts";
 import { writeFileAtomic } from "../state/layout.ts";
 import { readPrivateFile } from "../util/private-file.ts";
@@ -204,17 +204,17 @@ export async function createOAuthAdapter(options: OAuthAdapterOptions): Promise<
   // Where the provider ignores the cap, the guard still sends it and the streaming
   // cutoff plus the assumed maximum bound the estimate.
   const outputCap = Math.max(1, Math.min(settings.assumedMaxOutputTokens, model.maxTokens));
-  const inputRate =
-    settings.rates.cacheWrite > settings.rates.input
-      ? settings.rates.cacheWrite
-      : settings.rates.input;
+  const worst = reservationRates(settings);
+  const inputRate = [worst.input, worst.cacheRead, worst.cacheWrite].reduce((a, b) =>
+    a > b ? a : b,
+  );
   return {
     model: structuredClone(model),
     transport,
     meter: createEstimatingMeter({ settings, enforcesMaxTokens: options.enforcesMaxTokens }),
     // One capped call on a small context must fit before an attempt starts.
     minimumAttemptCredits: scaleCredits(
-      addCredits(tokenCost(inputRate, 8_000), tokenCost(settings.rates.output, outputCap)),
+      addCredits(tokenCost(inputRate, 8_000), tokenCost(worst.output, outputCap)),
       settings.safetyFactor,
     ),
     outputCap,

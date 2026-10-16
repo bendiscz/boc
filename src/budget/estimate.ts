@@ -28,6 +28,7 @@ export interface Rates {
 export interface EstimateSettings {
   readonly pricing: string;
   readonly rates: Rates;
+  readonly longContext?: { readonly inputTokensAbove: number; readonly rates: Rates };
   readonly safetyFactor: Credits;
   readonly assumedMaxOutputTokens: number;
 }
@@ -44,14 +45,23 @@ export function estimateSettings(
 ): EstimateSettings | undefined {
   const estimate = subscription.estimate;
   if (!estimate) return undefined;
+  const parseRates = (rates: NonNullable<typeof subscription.estimate>["rates"]): Rates => ({
+    input: parseCredits(rates.input),
+    output: parseCredits(rates.output),
+    cacheRead: parseCredits(rates.cacheRead),
+    cacheWrite: parseCredits(rates.cacheWrite),
+  });
   return {
     pricing: estimate.pricing,
-    rates: {
-      input: parseCredits(estimate.rates.input),
-      output: parseCredits(estimate.rates.output),
-      cacheRead: parseCredits(estimate.rates.cacheRead),
-      cacheWrite: parseCredits(estimate.rates.cacheWrite),
-    },
+    rates: parseRates(estimate.rates),
+    ...(estimate.longContext
+      ? {
+          longContext: {
+            inputTokensAbove: estimate.longContext.inputTokensAbove,
+            rates: parseRates(estimate.longContext.rates),
+          },
+        }
+      : {}),
     safetyFactor: parseCredits(estimate.safetyFactor ?? DEFAULT_SAFETY_FACTOR),
     assumedMaxOutputTokens: estimate.assumedMaxOutputTokens ?? DEFAULT_ASSUMED_MAX_OUTPUT_TOKENS,
   };
@@ -85,10 +95,28 @@ export interface EstimatingMeterOptions {
   ) => Promise<{ credits: Credits; receipt: string } | undefined>;
 }
 
+/** Rates used for reservations/cutoffs, independent of uncertain input-token estimates. */
+export function reservationRates(settings: EstimateSettings): Rates {
+  const tiers = [settings.rates, ...(settings.longContext ? [settings.longContext.rates] : [])];
+  if (tiers.some((r) => r.input <= 0n || r.output <= 0n)) {
+    throw new Error("No usable estimate (unknown or zero input/output rates).");
+  }
+  const max = (key: keyof Rates) => tiers.map((r) => r[key]).reduce((a, b) => (a > b ? a : b));
+  return {
+    input: max("input"),
+    output: max("output"),
+    cacheRead: max("cacheRead"),
+    cacheWrite: max("cacheWrite"),
+  };
+}
+
 export function createEstimatingMeter(options: EstimatingMeterOptions): CreditMeter {
-  const { rates, safetyFactor, assumedMaxOutputTokens } = options.settings;
-  // Cache writes can cost more than plain input; price all input at the higher rate.
-  const inputRate = rates.cacheWrite > rates.input ? rates.cacheWrite : rates.input;
+  const { safetyFactor, assumedMaxOutputTokens, longContext } = options.settings;
+  const worst = reservationRates(options.settings);
+  // Price all input at the highest potentially applicable input/cache rate.
+  const inputRate = [worst.input, worst.cacheRead, worst.cacheWrite].reduce((a, b) =>
+    a > b ? a : b,
+  );
   const outputLimit = (request: AdmissionRequest): number => {
     if (!options.enforcesMaxTokens) return assumedMaxOutputTokens;
     const requested = request.options.maxTokens ?? request.model.maxTokens;
@@ -98,19 +126,24 @@ export function createEstimatingMeter(options: EstimatingMeterOptions): CreditMe
     tokenCost(inputRate, estimateInputTokens(request));
   return {
     maxCharge(request) {
-      const raw = addCredits(inputCost(request), tokenCost(rates.output, outputLimit(request)));
+      const raw = addCredits(inputCost(request), tokenCost(worst.output, outputLimit(request)));
       const padded = scaleCredits(raw, safetyFactor);
       if (padded <= 0n) throw new Error("No usable estimate (zero rates).");
       return padded;
     },
     partialCharge(partial, request) {
-      return addCredits(inputCost(request), tokenCost(rates.output, partialOutputTokens(partial)));
+      return addCredits(inputCost(request), tokenCost(worst.output, partialOutputTokens(partial)));
     },
     async actualCharge(message, reserved) {
       const reported = await options.providerCharge?.(message);
       if (reported) return { ...reported, source: "provider" as ChargeSource };
       const u = message.usage;
       if (u && u.input + u.output + u.cacheRead + u.cacheWrite > 0) {
+        // Input includes all cache categories; reasoning is already in output.
+        const rates =
+          longContext && u.input + u.cacheRead + u.cacheWrite > longContext.inputTokensAbove
+            ? longContext.rates
+            : options.settings.rates;
         const credits = addCredits(
           tokenCost(rates.input, u.input),
           tokenCost(rates.output, u.output),

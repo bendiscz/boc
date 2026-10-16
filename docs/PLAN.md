@@ -1,9 +1,9 @@
 # Development plan and session handoff
 
-## Current state (2026-10-16, SDK upgrade running in production)
+## Current state (2026-10-16, model/Node upgrade maintenance)
 
 - **Working end to end, and deployed.** BoC's unattended host is the operator's Raspberry Pi 5, `boc@boc.local` (D027, RPI.md). It waits for AoC 2026 (release of day 1: 2026-12-01 05:00 UTC), with a readiness check every day while waiting (D029), then at T−30 and T−5.
-  - **The operator restarted the service on 2026-10-16 at 16:00:37 UTC.** Read-only verification: `active`, `SubState=running`, PID 63994; `start check passed` at **16:00:39 UTC**, then waiting for day 1. Daily checks passed through 2026-10-16 before the maintenance stop; observe the first post-upgrade daily check around 2026-10-17 16:00 UTC.
+  - **The service is stopped for the operator-authorized model/Node upgrade.** It previously restarted successfully at 16:00:37 UTC, then the operator stopped it again at **16:28:11 UTC**; verified PID 0/no other Node process. Its last service start check passed at 16:00:39 UTC. The Pi global runtime remains **Node 24.21.0**; do not assume the operator's `node -v` of 26.11.1 was on the Pi. Installation into `/usr/local` needs their sudo action.
   - The Pi is built from `7ba96e3` with Pi SDK 1.3.0; checkout `8838e60` adds deployment documentation only. Clean install, all 211 tests, build, audit and the full sandbox/toolchain probe passed on the Pi. A supervised current-model replay passed on both providers, followed by a timed event readiness run: `start check passed` at 14:37:42 UTC and waiting for day 1. The timed run stopped cleanly after 20 seconds. The subsequent systemd restart also passed readiness (above).
 - **Commands:**
   - `run`, `status`, `views`, `--tui`, `events.log`;
@@ -75,7 +75,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D033), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
-**The SDK upgrade is deployed and `boc.service` is active with a passing start check. Do not run another BoC process or disturb it. Next read-only check: confirm the first post-upgrade `daily check passed` around 2026-10-17 16:00 UTC.**
+**The service is stopped for model/Node maintenance. Same-runtime GPT-6.1 comparison is complete; next finish long-context accounting deployment/target-runtime smoke and operator Node installation before restarting. See MODEL-NODE-UPGRADE.md. Never overlap credential-using processes.**
 
 - **Look, never change:** `ssh boc@boc.local`, then `systemctl is-active boc`, `journalctl -u boc -n 50`, and `boc status ~/boc/var/event-2026.config.json`. These are safe while it runs.
 - **What needs the operator:**
@@ -116,7 +116,11 @@ See [Model comparison and Node rollout](MODEL-NODE-UPGRADE.md). **The service is
 - Published GPT-6.1 Sol input/output rates match Sol; cached input is halved: Copilot short-context native rates input/cacheRead/cacheWrite/output **200/10/250/1000** per million, long-context **400/20/500/1500**; Codex Standard **50/2.5/0/250**. Official sources and account/tiering caveats are in the rollout doc. Live entitlement and performance remain untested.
 - Planned sequential replay comparison: 2019 days 8/14/25 and 2024 days 15/24, old/new models at `low`, same output assumptions; aggregate allowance at most **300 native credits per provider**, best effort, split over four 75-credit configs. No AoC traffic/submissions, conservative pre-dispatch short-context bound, no parallel credential use. Isolate model tests on Node 24 before testing Node 26. Do not switch production without passing the comparison and pricing/tiering gates.
 
-**Next concrete action:** the operator stops `boc.service` for model comparison and Node maintenance; the Node-support CI is green. The service must not be disturbed by the agent. If no maintenance occurs first, check the next daily readiness result around 2026-10-17 16:00 UTC read-only. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
+The operator has now stopped the service. Same-runtime comparison on Node 24 is complete: GPT-6.1 Sol **9/9 scored parts per provider**, versus Sol **7/9 Copilot, 8/9 Codex**, under the same one-attempt/six-turn cap. Incomplete old-model attempts made no wrong proposals; do not call this general accuracy proof. New-model credits: Copilot **14.57630** vs 17.99952; Codex **4.41085** vs 6.39848; not consistently faster. All charges derived at published rates, no dashboard reconciliation or held charges. Max serialized context 52073 bytes (200000-byte pre-dispatch ceiling), max reported input 8166 tokens, max actual/estimate ratio <0.039. Eight configs/storage/summary names and interpretation are in MODEL-NODE-UPGRADE.md. Completed allocations were closed at actual spend (total **32.57582 Copilot / 10.80933 Codex**) to leave at most 100 per provider for target-runtime smoke within the aggregate 300 allowance.
+
+D034 recommends GPT-6.1 Sol on both providers, conditional on smoke/readiness. Added optional `estimate.longContext` tier support: worst-case rates for reservations/cutoffs/minimum attempt headroom; exact usage tier (including cache, >272000) for settlement. Copilot minimum headroom becomes 78 within the unchanged 100/puzzle budget; earlier failover is the safety tradeoff. All **216 tests** pass locally on Node 24 and 26, zero audit findings; independent read-only review found no issue. CI/deployment of this feature is pending. Production model config and global Pi Node are still unchanged; an installation command using the staged verified Node archive has been supplied to the operator.
+
+**Next concrete action:** finish green-CI pricing deployment and selected-model smoke under the staged Node 26 candidate; operator installs Node 26 globally; then safely switch the model/rates and verify readiness before operator restart. Do not claim global Node 26 or a production model switch yet. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
 
 Next operational tasks, in order:
 

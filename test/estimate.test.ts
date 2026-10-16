@@ -14,6 +14,7 @@ import {
   createEstimatingMeter,
   estimateInputTokens,
   estimateSettings,
+  type Rates,
 } from "../src/budget/estimate.ts";
 import { CreditLedger } from "../src/budget/ledger.ts";
 import { parseConfig } from "../src/config.ts";
@@ -116,6 +117,126 @@ test("actual charges prefer provider figures, then usage, then the estimate", as
     providerCharge: async () => ({ credits: c("0.01"), receipt: "provider:abc" }),
   });
   assert.equal((await reporting.actualCharge(withUsage, c("1"))).source, "provider");
+});
+
+test("long-context settings validate known rates and retain backward-compatible flat configs", () => {
+  const estimate = subscription.estimate;
+  assert.ok(estimate);
+  const withTier = (tier: unknown) => ({
+    ...config,
+    subscriptions: [{ ...subscription, estimate: { ...estimate, longContext: tier } }],
+  });
+  const tier = {
+    inputTokensAbove: 1000,
+    rates: { input: "6", output: "22.5", cacheRead: "0.6", cacheWrite: "7.5" },
+  };
+  const parsed = parseConfig(withTier(tier));
+  assert.deepEqual(estimateSettings(parsed.subscriptions[0] ?? subscription)?.longContext, {
+    inputTokensAbove: 1000,
+    rates: { input: c("6"), output: c("22.5"), cacheRead: c("0.6"), cacheWrite: c("7.5") },
+  });
+  assert.equal(settings.longContext, undefined);
+  for (const invalid of [
+    { ...tier, inputTokensAbove: 0 },
+    { ...tier, inputTokensAbove: 1.5 },
+    { ...tier, rates: { ...tier.rates, output: "0" } },
+    { ...tier, rates: { ...tier.rates, input: "0" } },
+    { ...tier, rates: { ...tier.rates, input: "invalid" } },
+    { ...tier, rates: { ...tier.rates, unknown: "1" } },
+  ])
+    assert.throws(() => parseConfig(withTier(invalid)), /Invalid configuration/);
+});
+
+const tieredSettings = {
+  ...settings,
+  longContext: {
+    inputTokensAbove: 1000,
+    rates: { input: c("6"), output: c("22.5"), cacheRead: c("0.6"), cacheWrite: c("7.5") },
+  },
+};
+
+test("tiered reservations and streaming cutoffs use worst-case rates even for short prompts", () => {
+  const meter = createEstimatingMeter({ settings: tieredSettings, enforcesMaxTokens: true });
+  const expected = scaleCredits(
+    (tokenCost(c("7.5"), estimateInputTokens(request())) + tokenCost(c("22.5"), 100)) as never,
+    c("1.5"),
+  );
+  assert.equal(meter.maxCharge(request(100)), expected);
+  const partial = message({ content: [{ type: "text", text: "x".repeat(300) }] });
+  assert.equal(
+    meter.partialCharge?.(partial, request(100)),
+    tokenCost(c("7.5"), estimateInputTokens(request())) + tokenCost(c("22.5"), 100),
+  );
+  const nonMonotonic = createEstimatingMeter({
+    settings: {
+      ...tieredSettings,
+      rates: { ...settings.rates, cacheRead: c("9"), output: c("30") },
+    },
+    enforcesMaxTokens: true,
+  });
+  assert.equal(
+    nonMonotonic.maxCharge(request(100)),
+    scaleCredits(
+      (tokenCost(c("9"), estimateInputTokens(request())) + tokenCost(c("30"), 100)) as never,
+      c("1.5"),
+    ),
+  );
+  assert.throws(
+    () =>
+      createEstimatingMeter({
+        settings: {
+          ...tieredSettings,
+          longContext: {
+            ...tieredSettings.longContext,
+            rates: { ...tieredSettings.longContext.rates, output: c("0") },
+          },
+        },
+        enforcesMaxTokens: true,
+      }),
+    /zero/,
+  );
+});
+
+test("tiered settlement selects the exact reported input boundary including both cache categories", async () => {
+  const meter = createEstimatingMeter({ settings: tieredSettings, enforcesMaxTokens: true });
+  for (const [input, cacheRead, cacheWrite, isLong] of [
+    [900, 100, 0, false],
+    [900, 101, 0, true],
+    [900, 100, 1, true],
+    [1000, 0, 0, false],
+    [1001, 0, 0, true],
+  ] as const) {
+    const response = message();
+    response.usage = {
+      ...response.usage,
+      input,
+      cacheRead,
+      cacheWrite,
+      output: 200,
+      reasoning: 150,
+    };
+    const actual = await meter.actualCharge(response, c("1"));
+    const rates: Rates = isLong ? tieredSettings.longContext.rates : settings.rates;
+    assert.equal(
+      actual.credits,
+      tokenCost(rates.input, input) +
+        tokenCost(rates.cacheRead, cacheRead) +
+        tokenCost(rates.cacheWrite, cacheWrite) +
+        tokenCost(rates.output, 200),
+    );
+    assert.equal(actual.source, "derived");
+    assert.match(actual.receipt, /^usage:synthetic-2026:/);
+  }
+  const provider = createEstimatingMeter({
+    settings: tieredSettings,
+    enforcesMaxTokens: true,
+    providerCharge: async () => ({ credits: c("0.02"), receipt: "provider:tier" }),
+  });
+  assert.deepEqual(await provider.actualCharge(message(), c("1")), {
+    credits: c("0.02"),
+    receipt: "provider:tier",
+    source: "provider",
+  });
 });
 
 test("a response streaming past its estimate is cut off and settled as estimated", async (t) => {

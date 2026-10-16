@@ -6,6 +6,12 @@ import { CREDIT_PATTERN, parseCredits } from "./budget/credits.ts";
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,63}(?![\s\S])/);
 const provider = z.enum(["github-copilot", "openai-codex", "anthropic"]);
 const amount = z.string().regex(CREDIT_PATTERN);
+const rates = z.strictObject({
+  input: amount,
+  output: amount,
+  cacheRead: amount,
+  cacheWrite: amount,
+});
 const filePath = z
   .string()
   .min(1)
@@ -100,12 +106,21 @@ const configSchema = z
               /** Pricing source label, e.g. "github-2026-09". */
               pricing: identifier,
               /** Native credits per million tokens. */
-              rates: z.strictObject({
-                input: amount,
-                output: amount,
-                cacheRead: amount,
-                cacheWrite: amount,
-              }),
+              rates,
+              /** Optional second tier; reservation uses the worst rates of both. */
+              longContext: z
+                .strictObject({
+                  inputTokensAbove: z.number().int().min(1).max(100_000_000),
+                  rates,
+                })
+                .refine(
+                  (tier) =>
+                    !CREDIT_PATTERN.test(tier.rates.input) ||
+                    !CREDIT_PATTERN.test(tier.rates.output) ||
+                    (parseCredits(tier.rates.input) > 0n && parseCredits(tier.rates.output) > 0n),
+                  { message: "Long-context input and output rates must be known and positive." },
+                )
+                .optional(),
               safetyFactor: z
                 .string()
                 .regex(/^[1-9](\.[0-9]{1,6})?(?![\s\S])/)

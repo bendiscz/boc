@@ -199,6 +199,21 @@ test("the adapter refuses unsafe files, missing estimates, and unavailable model
   );
 });
 
+test("tiered adapter minimum headroom uses the same worst-case rates as dispatch admission", async (t) => {
+  const f = await setup(t);
+  assert.ok(f.subscription.estimate);
+  f.subscription.estimate.longContext = {
+    inputTokensAbove: 272000,
+    rates: { input: "600", output: "2250", cacheRead: "60", cacheWrite: "750" },
+  };
+  const adapter = await f.make();
+  assert.equal(adapter.minimumAttemptCredits, parseCredits("36"));
+  const invalid = structuredClone(f.subscription);
+  assert.ok(invalid.estimate?.longContext);
+  invalid.estimate.longContext.rates.output = "0";
+  await assert.rejects(createCopilotAdapter(invalid, { provider: f.provider }), /zero/);
+});
+
 test("the real Pi Copilot catalog is used without network access at construction", async (t) => {
   const f = await setup(t, { availableModelIds: ["claude-sonnet-4.6"] });
   const adapter = await createCopilotAdapter({ ...f.subscription, model: "claude-sonnet-4.6" });

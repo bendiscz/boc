@@ -1,6 +1,6 @@
 # GPT-6.1 Sol comparison and Node 26 rollout
 
-Requested 2026-10-16. **Production still runs Node 24.21.0 and GPT-6 Sol.** The service is active; no live model comparison or runtime replacement may run until the operator stops it. This request authorizes the model evaluation, but not unbounded spending or concurrent credential use.
+Requested 2026-10-16. **The operator stopped the service; the same-runtime model comparison is complete.** The Pi's global runtime is still Node 24.21.0 (verified over SSH), and the event config still selects GPT-6 Sol pending target-runtime smoke checks. The reported `node -v` of 26.11.1 did not reflect `/usr/local/bin/node` on the Pi. Global installation needs the operator's sudo action; a private Node 26 candidate and rollback archive are staged.
 
 ## Node 26: offline implementation
 
@@ -16,7 +16,7 @@ This increment upgrades the **trusted host/orchestrator runtime**. The digest-pi
 
 ## GPT-6.1 Sol: pricing evidence and comparison design
 
-The Pi 1.3.0 catalogs and offline wire tests already support `gpt-6.1-sol` on both BoC providers. Catalog presence is not authenticated account entitlement. **No GPT-6.1 Sol call has been made yet.**
+The Pi 1.3.0 catalogs and offline wire tests already support `gpt-6.1-sol` on both BoC providers. Catalog presence is not authenticated account entitlement. **Live entitlement and a bounded comparison now pass on both providers; see results below.**
 
 Official rates fetched 2026-10-16 (native credits per million tokens):
 
@@ -42,6 +42,25 @@ Sources: [GitHub Copilot models and pricing](https://docs.github.com/en/copilot/
 6. Prefer GPT-6.1 Sol only if entitlement works, accuracy is not worse on the representative set, and cost/latency are acceptable. A small speed difference is not conclusive. Copilot and Codex may have different outcomes; do not assume both should switch together.
 7. Before switching, confirm native rates/accounting, address long-context tiers (current config has flat rates), back up the event config privately, and preserve provider/pool/subscription identities and existing journals. Keep `low`, the output assumption, event limits and provider order unchanged. New model activation is conditional, not automatic.
 
+## Same-runtime comparison results (2026-10-16)
+
+All eight lanes ran sequentially on the Pi with **Node 24.21.0 / Pi 1.3.0**, `low`, 32000 output assumptions, one attempt and six turns per part. Source caches were the accepted-answer replay storages `bench-hard-{2019,2024}-low`; only puzzle pages/input were exposed to the solver, not source solution code or accepted answers for the part being solved. No AoC requests or submissions occurred.
+
+| Provider | Model | Correct / scored | Calls | Derived native credits | Total wall seconds |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Copilot | GPT-6 Sol | 7/9 | 29 | 17.99952 | 118.7 |
+| Copilot | GPT-6.1 Sol | 9/9 | 22 | 14.57630 | 137.2 |
+| Codex | GPT-6 Sol | 8/9 | 29 | 6.39848 | 123.0 |
+| Codex | GPT-6.1 Sol | 9/9 | 21 | 4.41085 | 128.3 |
+
+Every scored correct part was correct on the first proposal. The old-model incompletions made **no wrong proposals**: the six-turn test cap ended 2019 day 25 on both providers and 2024 day 24 part 2 on Copilot. Production has a looser turn cap, so these are constrained-task completions, not demonstrated general accuracy failures. One sample per part is noisy; total times include incomplete old-model attempts and are not directly comparable completion-speed measures. The new model was not consistently faster, but completed more within the turn cap using about 19% fewer Copilot credits and 31% fewer Codex credits.
+
+All charges were usage-derived at published native rates, **not independently reconciled with account billing dashboards**. No held charges remained. Maximum context was 52073 serialized bytes (pre-dispatch ceiling 200000); maximum reported input including cache was 8166 tokens. Maximum actual/reservation ratio was below 0.039. Only numeric metrics/outcomes are documented; puzzle-bearing artifacts stay private on the Pi.
+
+Private configs: `var/sol61-{copilot,codex}-{old,new}-{2019,2024}-20261016.config.json`; storage under `var/bench/` with the same stem; driver `var/sol61-compare-20261016.mjs`; safe metric summaries/index under `var/deploy/sol61-node26-20261016/`. All completed allocations were closed by lowering event/per-puzzle limits to their final spent amounts, without touching journals. Total comparison spend: **32.57582 Copilot** and **10.80933 Codex**. A subsequent smoke cap of 100 per provider keeps cumulative authorized exposure below 300 per provider.
+
+**Selection:** recommend GPT-6.1 Sol for both providers, conditional on target-runtime smoke and readiness. D034 adds optional long-context rates: reserve/cut off at worst category rates, settle at the tier selected by reported input including cache (strictly above threshold). Copilot production must explicitly configure 272000 and the published high-tier rates; its conservative minimum attempt headroom rises to 78 credits. The new feature passes 216 local tests on both Node versions; independent read-only review found no issue. New code CI and Pi deployment remain pending before production config changes.
+
 ## Pi maintenance sequence and operator actions
 
 1. **Operator:** `sudo systemctl stop boc`. Agent verifies PID 0/no other BoC process before replays or other credential-using commands.
@@ -53,4 +72,4 @@ Sources: [GitHub Copilot models and pricing](https://docs.github.com/en/copilot/
 
 ## Next concrete task
 
-Node 26 support is implemented, pushed and green in CI. Have the operator stop the service for model evaluation. Live benchmarks, the model-switch decision and the root-owned Node upgrade are pending; the running Pi is unchanged.
+Complete green CI/deployment of long-context accounting, verify the selected model under the private Node 26 candidate, and have the operator install the staged verified Node 26 archive into `/usr/local`. Only after successful smoke/readiness checks, update the event config model/rate policy and have the operator restart the service. The service is currently stopped; global Node and event config remain unchanged.

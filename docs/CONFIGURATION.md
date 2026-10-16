@@ -56,6 +56,7 @@ Each subscription needs an `estimate` block before it can run:
 ```
 
 - `rates` are native credits per million tokens, taken from the provider's current official price list for the subscription's model. The values above are illustrative only.
+- Optional `longContext`: `{ "inputTokensAbove": 272000, "rates": { "input": "400", "cacheRead": "20", "cacheWrite": "500", "output": "1500" } }` supplies a second native-credit rate tier (illustrated for Copilot GPT-6.1 Sol, checked 2026-10-16). Input/output rates must be positive; zero cache-write rates are allowed when published. Reservations, streaming cutoffs and minimum attempt headroom use the worst category rates across both tiers, even for a small prompt. Settlement selects the long tier only when reported uncached input + cache reads + cache writes **exceed** the threshold; exactly the threshold uses base rates. Output already includes reasoning. This avoids trusting a heuristic input estimate to choose a cheaper reservation tier, at the cost of more unused headroom. Flat configs without `longContext` retain their behavior and receipt format.
 - `safetyFactor` (default `1.5`) pads every estimate.
 - `assumedMaxOutputTokens` (default 32000) is the per-response output bound, capped at the model maximum. On providers that enforce an output limit (Copilot), it is also sent as the request's cap. On providers that do not (Codex), it sizes the reservation, and the guard's streaming cutoff stops a response that outgrows it.
   - It dominates each reservation.
