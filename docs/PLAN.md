@@ -1,9 +1,9 @@
 # Development plan and session handoff
 
-## Current state (2026-10-16, model/Node upgrade maintenance)
+## Current state (2026-10-16, GPT-6.1 Sol and Node 26 running in production)
 
 - **Working end to end, and deployed.** BoC's unattended host is the operator's Raspberry Pi 5, `boc@boc.local` (D027, RPI.md). It waits for AoC 2026 (release of day 1: 2026-12-01 05:00 UTC), with a readiness check every day while waiting (D029), then at T−30 and T−5.
-  - **The service is stopped for the operator-authorized model/Node upgrade.** It previously restarted successfully at 16:00:37 UTC, then the operator stopped it again at **16:28:11 UTC**; verified PID 0/no other Node process. Its last service start check passed at 16:00:39 UTC. The operator has now installed **global Node 26.11.1**, independently verified over SSH. Clean install, all 216 tests, audit and full preflight pass on that binary; event readiness passed at **17:07:56 UTC**. Only service restart/observation remain.
+  - **The operator restarted the service at 2026-10-16 18:07:47 UTC; read-only verification confirms active/running, PID 75927. The start check passed at 18:07:50 UTC and BoC is waiting for day 1.** It previously restarted successfully at 16:00:37 UTC, then the operator stopped it again at **16:28:11 UTC**; verified PID 0/no other Node process. Its last service start check passed at 16:00:39 UTC. The operator has now installed **global Node 26.11.1**, independently verified over SSH. Clean install, all 216 tests, audit and full preflight pass on that binary; event readiness passed at **17:07:56 UTC**. Restart is now verified; the next daily readiness check is due around 2026-10-17 18:07 UTC.
   - The Pi is built from `27de39f` with Pi SDK 1.3.0 and tier-aware pricing; subsequent checkout changes are documentation-only. Clean install, all 216 tests, build, audit and full sandbox/toolchain probe pass on global Node 26.11.1. The initial SDK-only rollout also passed these checks on Node 24. A supervised current-model replay passed on both providers, followed by a timed event readiness run: `start check passed` at 14:37:42 UTC and waiting for day 1. The timed run stopped cleanly after 20 seconds. The subsequent systemd restart also passed readiness (above).
 - **Commands:**
   - `run`, `status`, `views`, `--tui`, `events.log`;
@@ -22,7 +22,7 @@
   - Speedups (D030): an input preview, `proposeOnSuccess`, concurrent release reads, a 1 s release margin, and warm containers.
   - Configurable reasoning effort, `low` in the event config (D031), and a configurable run cap, `sandbox.maxRunSeconds` (default 60; 240 on the Pi).
 - **Budgets are best effort (D016).** Each call reserves a padded estimate against four counters, charges are recorded with their source, runaway responses are cut off, and each pool has an overshoot tolerance. No reservation is held anywhere (all were settled at 0 on 2026-09-29 on the operator's instruction).
-- **Providers and model:** GitHub Copilot and ChatGPT/Codex, calibrated adapters (FEASIBILITY.md). The stopped event config now selects **`gpt-6.1-sol` on both** (D034), Copilot first and Codex as failover; no parallel solving; Anthropic is dropped (D020). Native rates include Copilot's long-context tier; cache reads are 10 Copilot / 2.5 Codex per million. New dashboard reconciliation remains unverified.
+- **Providers and model:** GitHub Copilot and ChatGPT/Codex, calibrated adapters (FEASIBILITY.md). The active event config now selects **`gpt-6.1-sol` on both** (D034), Copilot first and Codex as failover; no parallel solving; Anthropic is dropped (D020). Native rates include Copilot's long-context tier; cache reads are 10 Copilot / 2.5 Codex per million. New dashboard reconciliation remains unverified.
 - **Sandbox.** The image `boc-solver:dev` is `sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd` (arm64, rebuilt 2026-09-29 for D028), with `uv` and `advent-of-code-ocr` hash-pinned (`sandbox/*-requirements.txt`). It is loaded on the Pi, and every private config points to it.
   - `npm run test:executor -- <id> --toolchains` passes on Docker Desktop and on the Pi (bare-metal Linux, 16K pages), including the session checks.
   - `npm run test:linux -- <id>` passes on a native Linux daemon (dind) under umask 022 and 077. An amd64 run is still open.
@@ -75,7 +75,7 @@
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D034), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
-**The service is stopped for model/Node maintenance. GPT-6.1 selection, tier-aware pricing and global Node 26 installation are complete and verified. Next: the operator starts `boc.service`; verify active state and a new start check, then observe its next daily check. See MODEL-NODE-UPGRADE.md. Never overlap credential-using processes.**
+**The service is active on Node 26.11.1 / GPT-6.1 Sol, with a passing start check at 2026-10-16 18:07:50 UTC. Do not disturb it or run another credential-using BoC process. Next: observe the daily readiness check around 2026-10-17 18:07 UTC, read-only. See MODEL-NODE-UPGRADE.md.**
 
 - **Look, never change:** `ssh boc@boc.local`, then `systemctl is-active boc`, `journalctl -u boc -n 50`, and `boc status ~/boc/var/event-2026.config.json`. These are safe while it runs.
 - **What needs the operator:**
@@ -122,7 +122,9 @@ D034 recommends GPT-6.1 Sol on both providers, conditional on smoke/readiness. A
 
 **Global `/usr/local/bin/node` now reports v26.11.1**, independently verified after the operator's installation. A fresh global-runtime clean install, all 216 tests, audit (zero findings), full sandbox/toolchain probe and event readiness passed; the readiness run entered waiting at **17:07:56 UTC** and stopped cleanly after 20 seconds. Event spent/reserved remains 0/0 on both providers; config checksum is unchanged. The service is stopped and no Node process remains. Evidence logs are under `var/deploy/sol61-node26-20261016/global-node26-*` on the Pi. The Mac's ignored reference config is synced with a local reference backup; credentials remain on the Pi.
 
-**Next concrete action:** the operator runs `sudo systemctl start boc`; verify active state, a fresh start check, notification receipt and the next daily check. Model config switch and global Node upgrade are complete; service restart/observation remain. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
+**Restart verified:** active/running (PID 75927) since **2026-10-16 18:07:47 UTC**, start check passed at **18:07:50 UTC**, waiting for day 1; global Node is 26.11.1, event spent/reserved remains 0/0 on both providers. No startup alert delivery error was logged; receipt of this restart notification is not yet confirmed.
+
+**Next concrete action:** observe the next daily readiness check around 2026-10-17 18:07 UTC, read-only, and confirm restart notification receipt. Model switch, global Node upgrade and service restart are complete. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
 
 Next operational tasks, in order:
 
