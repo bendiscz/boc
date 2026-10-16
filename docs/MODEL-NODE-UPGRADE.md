@@ -5,7 +5,7 @@ Requested 2026-10-16. **Production still runs Node 24.21.0 and GPT-6 Sol.** The 
 ## Node 26: offline implementation
 
 - Development default: **26.11.1**, with Node types **26.6.5**. Package engines also retain **24.21.0+ within 24.x** for rollback; Node 25 and 27 are not supported.
-- CI covers Node 24.21.0 and 26.11.1 on Linux and macOS. Pi setup defaults to 26.11.1, and preflight checks both supported ranges including minimum versions.
+- CI covers Node 24.21.0 and 26.11.1 on Linux and macOS; all four jobs passed at `02708e6` ([run 38931635552](https://github.com/bendiscz/boc/actions/runs/38931635552)). Pi setup defaults to 26.11.1, and preflight checks both supported ranges including minimum versions.
 - Node 26.11.1 / npm 11.20.0: clean install, lint, type checking, **212 tests**, build, audit (zero findings) and Docker executor/toolchain probe pass on the Mac.
 - Node 24.21.0 / npm 11.19.0: clean install and full check also pass with the new lockfile/types. Two test diagnostics needed a non-undefined assertion message under the newer Node typings. No application source change was needed.
 - The official arm64 Node 26.11.1 archive and Node 24.21.0 rollback archive are staged on the Pi in `var/deploy/node26-20261016/`, verified against their respective official `SHASUMS256.txt` files. A private extracted candidate runs `--version` successfully; `/usr/local/bin/node` is still 24.21.0. No credentials were touched and no service was stopped.
@@ -53,4 +53,4 @@ Sources: [GitHub Copilot models and pricing](https://docs.github.com/en/copilot/
 
 ## Next concrete task
 
-Confirm CI for Node 26 support, then have the operator stop the service for model evaluation. Live benchmarks, the model-switch decision and the root-owned Node upgrade are pending; the running Pi is unchanged.
+Node 26 support is implemented, pushed and green in CI. Have the operator stop the service for model evaluation. Live benchmarks, the model-switch decision and the root-owned Node upgrade are pending; the running Pi is unchanged.
