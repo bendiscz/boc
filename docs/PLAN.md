@@ -4,7 +4,7 @@
 
 - **Working end to end, and deployed.** BoC's unattended host is the operator's Raspberry Pi 5, `boc@boc.local` (D027, RPI.md). It waits for AoC 2026 (release of day 1: 2026-12-01 05:00 UTC), with a readiness check every day while waiting (D029), then at T−30 and T−5.
   - **The service is stopped for the operator-authorized model/Node upgrade.** It previously restarted successfully at 16:00:37 UTC, then the operator stopped it again at **16:28:11 UTC**; verified PID 0/no other Node process. Its last service start check passed at 16:00:39 UTC. The operator has now installed **global Node 26.11.1**, independently verified over SSH. Clean install, all 216 tests, audit and full preflight pass on that binary; event readiness passed at **17:07:56 UTC**. Only service restart/observation remain.
-  - The Pi is built from `7ba96e3` with Pi SDK 1.3.0; checkout `8838e60` adds deployment documentation only. Clean install, all 211 tests, build, audit and the full sandbox/toolchain probe passed on the Pi. A supervised current-model replay passed on both providers, followed by a timed event readiness run: `start check passed` at 14:37:42 UTC and waiting for day 1. The timed run stopped cleanly after 20 seconds. The subsequent systemd restart also passed readiness (above).
+  - The Pi is built from `27de39f` with Pi SDK 1.3.0 and tier-aware pricing; subsequent checkout changes are documentation-only. Clean install, all 216 tests, build, audit and full sandbox/toolchain probe pass on global Node 26.11.1. The initial SDK-only rollout also passed these checks on Node 24. A supervised current-model replay passed on both providers, followed by a timed event readiness run: `start check passed` at 14:37:42 UTC and waiting for day 1. The timed run stopped cleanly after 20 seconds. The subsequent systemd restart also passed readiness (above).
 - **Commands:**
   - `run`, `status`, `views`, `--tui`, `events.log`;
   - the ledger and submission operator commands;
@@ -69,13 +69,13 @@
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Development host (Mac).** It sits behind a TLS-intercepting proxy: prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`, and pass the CA to Docker builds as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy. It idle-sleeps; use `caffeinate` for long local runs. The Pi is outside the proxy and needs no CA.
-- **Checks.** `npm run check`: 211 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS (24.21.0 on the Pi), Pi family 1.3.0 (D032), Zod 4.6.7, Biome 2.5.15, Node types 24.19.2, TypeScript 6.0.3. Final code CI passed on Linux/macOS at `7ba96e3` ([run 38908939426](https://github.com/bendiscz/boc/actions/runs/38908939426)).
+- **Checks.** `npm run check`: 216 offline tests. Runtime: global Node 26.11.1 on the Pi, with tested Node 24.21.0 rollback support. Pi family 1.3.0 (D032), Zod 4.6.7, Biome 2.5.15, Node types 26.6.5, TypeScript 6.0.3. Final code CI passed all Linux/macOS × Node 24/26 jobs at `27de39f` ([run 38934703130](https://github.com/bendiscz/boc/actions/runs/38934703130)).
 
 ## Next session: start here
 
-Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D033), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
+Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D034), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
-**The service is stopped for model/Node maintenance. Same-runtime GPT-6.1 comparison is complete; next finish long-context accounting deployment/target-runtime smoke and operator Node installation before restarting. See MODEL-NODE-UPGRADE.md. Never overlap credential-using processes.**
+**The service is stopped for model/Node maintenance. GPT-6.1 selection, tier-aware pricing and global Node 26 installation are complete and verified. Next: the operator starts `boc.service`; verify active state and a new start check, then observe its next daily check. See MODEL-NODE-UPGRADE.md. Never overlap credential-using processes.**
 
 - **Look, never change:** `ssh boc@boc.local`, then `systemctl is-active boc`, `journalctl -u boc -n 50`, and `boc status ~/boc/var/event-2026.config.json`. These are safe while it runs.
 - **What needs the operator:**
