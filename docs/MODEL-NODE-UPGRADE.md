@@ -1,6 +1,6 @@
 # GPT-6.1 Sol comparison and Node 26 rollout
 
-Requested 2026-10-16. **The operator stopped the service; the same-runtime model comparison is complete.** The Pi's global runtime is still Node 24.21.0 (verified over SSH), and the event config now selects **GPT-6.1 Sol on both providers**, after successful target-runtime smoke checks. The reported `node -v` of 26.11.1 did not reflect `/usr/local/bin/node` on the Pi. Global installation needs the operator's sudo action; a private Node 26 candidate and rollback archive are staged.
+Requested 2026-10-16. **The operator stopped the service; the same-runtime model comparison is complete.** The Pi's global runtime is now **Node 26.11.1**, independently verified after the operator's installation, and the event config now selects **GPT-6.1 Sol on both providers**, after successful target-runtime smoke checks. The reported `node -v` of 26.11.1 did not reflect `/usr/local/bin/node` on the Pi. Global installation is complete; only service restart/observation remain. The verified Node 24 rollback archive remains staged.
 
 ## Node 26: offline implementation
 
@@ -80,4 +80,4 @@ A 20-second manual event run under the private Node 26 candidate passed readines
 
 ## Next concrete task
 
-The remaining blocking action is the operator's **global Node 26 installation** using the staged checksum-verified archive and sudo. The service is stopped, the event model/rate config is switched, and all candidate-runtime checks pass. Verify `/usr/local/bin/node -v` over SSH, rerun global-runtime preflight/readiness, then have the operator restart the service. Never claim global Node 26 from a development-shell or private-candidate version check.
+Global Node 26.11.1 installation is complete and independently verified. Fresh clean install, all **216 tests**, audit (zero findings), full sandbox/toolchain preflight and bounded event readiness passed on the global binary. The event entered waiting at **2026-10-16 17:07:56 UTC** and stopped cleanly after 20 seconds, with config checksum unchanged and event spent/reserved 0/0. Private logs: `var/deploy/sol61-node26-20261016/global-node26-*`. No Node process remains. **Next: the operator starts `boc.service`, then verify active state, fresh start check, alert receipt and the next daily check.**
