@@ -73,7 +73,7 @@
 
 ## Next session: start here
 
-Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D031), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
+Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D032), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
 **The production service is running on the Pi. Do not disturb it without the operator.**
 
@@ -93,7 +93,9 @@ Verification (Node 24.21.0 / npm 11.19.0): baseline at `92d08fe` passed 193 test
 
 The unchanged solver image passed `npm run test:executor -- sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd --toolchains` on Docker Desktop. A one-off synthetic cross-version journal test generated journals with pre-upgrade `92d08fe` / Pi 0.87.1, then verified identical read-only inspection and restart preservation of solved answers, spent credits and a held reservation with the upgraded code. Offline example config/status commands also passed. Baseline GitHub CI at `92d08fe` was green; upgrade CI is pending push/confirmation.
 
-**Next concrete development action:** complete the separate compatible patch increment (Zod/Biome/Node 24 types), confirm CI, then arrange the operator-controlled maintenance window for supervised provider validation and deployment. New-model entitlement, native pricing/tiering and calibration remain unverified; do not change the production model. Pi's newer `openai` ChatGPT OAuth path remains a separate migration. The operator-owned SSD migration remains the primary hardware prerequisite.
+The separate compatible patch increment updates Zod to **4.6.7**, Biome to **2.5.15**, and Node types to **24.19.2**; TypeScript remains **6.0.3**. A second clean install, `npm run check` (211 tests) and `npm audit` all pass with these versions.
+
+**Next concrete action:** confirm CI, then arrange the operator-controlled maintenance window for supervised provider validation and deployment. New-model entitlement, native pricing/tiering and calibration remain unverified; do not change the production model. Pi's newer `openai` ChatGPT OAuth path remains a separate migration. The operator-owned SSD migration remains the primary hardware prerequisite.
 
 Next operational tasks, in order:
 

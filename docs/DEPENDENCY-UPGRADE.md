@@ -53,7 +53,7 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 - [x] Update direct `pi-ai`, `pi-agent-core`, and `pi-coding-agent` to **1.3.0** together. Align retained family overrides, including `pi-tui`; remove the obsolete `chord` override after verifying the resolved tree. Inspect newly introduced internal packages, including telemetry.
 - [x] Regenerate `package-lock.json` using Node 24 and `--ignore-scripts`; inspect `npm ls` for duplicate or mixed Pi versions. Then verify a clean `npm ci --ignore-scripts`.
 - [x] Fix the `AnyModel` test-helper incompatibility while preserving explicit rejection of unsupported operations/model types.
-- [ ] Update Zod **4.6.5 → 4.6.7**, Biome **2.5.14 → 2.5.15**, and Node types **24.13.6 → 24.19.2** in a separate increment if checks remain green (versions observed on assessment date).
+- [x] Update Zod **4.6.5 → 4.6.7**, Biome **2.5.14 → 2.5.15**, and Node types **24.13.6 → 24.19.2** in a separate increment if checks remain green (versions observed on assessment date).
 - [x] Keep TypeScript **6.0.3** initially. Version 7.0.2 is available, but a compiler major migration is unrelated to model support and should be assessed separately. Do not move Node types to 26 or upgrade the runtime/npm globally as part of this change.
 - [x] Do not remove `pi-coding-agent` or redesign the test/runtime abstraction in the same upgrade; its settings/resources and admission integration tests are still used.
 
@@ -90,4 +90,4 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 
 Done means reproducible pinned installation on Node 24, green offline checks/CI, no known audit findings (or explicitly documented exceptions), preserved safety/recovery behavior, catalog support for the selected new chat models, and separately authorized live evidence before changing production models. Deployment and new-model activation are distinct gates.
 
-**Next concrete task:** finish the separate compatible patch increment and confirm CI, then arrange the operator-controlled Pi maintenance window for phase 4–5. Do not change production or start live runs while the service is running; new-model selection/rates and a bounded test allowance must be explicit.
+**Next concrete task:** confirm CI for the completed offline increments, then arrange the operator-controlled Pi maintenance window for phase 4–5. Do not change production or start live runs while the service is running; new-model selection/rates and a bounded test allowance must be explicit.
