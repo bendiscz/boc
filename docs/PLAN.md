@@ -1,10 +1,10 @@
 # Development plan and session handoff
 
-## Current state (2026-09-30, end of session)
+## Current state (2026-10-16, SDK rollout maintenance)
 
-- **Working end to end, and deployed.** BoC runs unattended as `boc.service` on the operator's Raspberry Pi 5, `boc@boc.local` (D027, RPI.md). It waits for AoC 2026 (release of day 1: 2026-12-01 05:00 UTC), with a readiness check every day while waiting (D029), then at T−30 and T−5.
-  - The service was started by the operator on 2026-09-30 at 12:27:57 CEST; `journalctl -u boc` shows `start check passed` and `day-01: waiting for the pre-release check`.
-  - The Pi's checkout is at `main` (`4114754`), built from `9627aaa`; later commits changed only docs.
+- **Working end to end, and deployed.** BoC's unattended host is the operator's Raspberry Pi 5, `boc@boc.local` (D027, RPI.md). It waits for AoC 2026 (release of day 1: 2026-12-01 05:00 UTC), with a readiness check every day while waiting (D029), then at T−30 and T−5.
+  - **The service is currently stopped for the operator-approved SDK rollout and needs an operator restart.** The operator stopped it on 2026-10-16 at 14:29 UTC; PID is 0 and no BoC/Node process remains. systemd reports `failed` because the graceful SIGTERM shutdown returned 130, not because a process is still running. Daily checks passed through 2026-10-16 before the stop.
+  - The Pi's checkout/build is `7ba96e3` with Pi SDK 1.3.0. Clean install, all 211 tests, build, audit and the full sandbox/toolchain probe passed on the Pi. A supervised current-model replay passed on both providers, followed by a timed event readiness run: `start check passed` at 14:37:42 UTC and waiting for day 1. The timed run stopped cleanly after 20 seconds. Do not claim the systemd service is restarted yet.
 - **Commands:**
   - `run`, `status`, `views`, `--tui`, `events.log`;
   - the ledger and submission operator commands;
@@ -69,13 +69,13 @@
 
   - **Allowance:** the operator's standing allowance is 300 per event and 100 per puzzle per config and provider, in native units. No provider-side caps are configured.
 - **Development host (Mac).** It sits behind a TLS-intercepting proxy: prefix live commands with `NODE_EXTRA_CA_CERTS=/Users/benda/Work/ts/pki/ts_bundle.pem`, and pass the CA to Docker builds as a BuildKit secret (SANDBOX.md). An image rebuild takes about 19 minutes through the proxy. It idle-sleeps; use `caffeinate` for long local runs. The Pi is outside the proxy and needs no CA.
-- **Checks.** `npm run check`: 193 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS (24.21.0 on the Pi), the Pi family 0.87.1, and `@earendil-works/pi-agent-core` as a direct dependency.
+- **Checks.** `npm run check`: 211 offline tests, and credential-free CI on GitHub (`main` at `https://github.com/bendiscz/boc.git`). Pinned versions: Node 24 LTS (24.21.0 on the Pi), Pi family 1.3.0 (D032), Zod 4.6.7, Biome 2.5.15, Node types 24.19.2, TypeScript 6.0.3. Final code CI passed on Linux/macOS at `7ba96e3` ([run 38908939426](https://github.com/bendiscz/boc/actions/runs/38908939426)).
 
 ## Next session: start here
 
 Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D032), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
-**The production service is running on the Pi. Do not disturb it without the operator.**
+**The SDK upgrade is deployed on the Pi, but the service is stopped for maintenance. Next: the operator runs `sudo systemctl start boc`, then verify `systemctl is-active boc` and a new `start check passed` in `journalctl -u boc`. Check the next daily readiness result before closing the rollout.**
 
 - **Look, never change:** `ssh boc@boc.local`, then `systemctl is-active boc`, `journalctl -u boc -n 50`, and `boc status ~/boc/var/event-2026.config.json`. These are safe while it runs.
 - **What needs the operator:**
@@ -87,15 +87,24 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D032), and the docs 
 
 ### Dependency upgrade requested 2026-10-15
 
-The operator authorized implementation after the assessment. See [Dependency upgrade assessment and plan](DEPENDENCY-UPGRADE.md), FEASIBILITY.md (Pi 1.3.0), and D032. The development Pi family is now **1.3.0**, with the obsolete chord override removed; Node 24 LTS, TypeScript 6, existing provider identities, configuration/journal formats and production model/settings are retained. **The Pi service has not been updated or disturbed.**
+The operator authorized implementation after the assessment. See [Dependency upgrade assessment and plan](DEPENDENCY-UPGRADE.md), FEASIBILITY.md (Pi 1.3.0), and D032. The development Pi family is now **1.3.0**, with the obsolete chord override removed; Node 24 LTS, TypeScript 6, existing provider identities, configuration/journal formats and production model/settings are retained. **The upgraded build is now deployed on the Pi; the operator stopped the service first, and it remains stopped pending their restart.**
 
 Verification (Node 24.21.0 / npm 11.19.0): baseline at `92d08fe` passed 193 tests; upgraded clean `npm ci --ignore-scripts && npm run check` passes **211 tests**, lint without warnings, type checking and build. `npm audit` reports zero findings; family packages deduplicate correctly. The narrow fixture migration handles `Models.getAuth`'s `AnyModel` input and rejects non-chat models. Eighteen new actual-provider wire tests intercept every fetch (no real network/model calls), confirming catalogs (`gpt-6-sol` and `gpt-6.1-sol`), caps, no retries/WebSockets, cache/reasoning usage, accounting, cancellation, tool round trips, malformed/truncated streams and awaited lifecycle events. An independent static review found no blocking regression.
 
-The unchanged solver image passed `npm run test:executor -- sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd --toolchains` on Docker Desktop. A one-off synthetic cross-version journal test generated journals with pre-upgrade `92d08fe` / Pi 0.87.1, then verified identical read-only inspection and restart preservation of solved answers, spent credits and a held reservation with the upgraded code. Offline example config/status commands also passed. GitHub CI passed on Linux and macOS for the upgraded SDK and compatible patches at `39ba549` ([run 38908392973](https://github.com/bendiscz/boc/actions/runs/38908392973)). Final independent diff review found a P2 test-quality gap: SDK error handling could swallow assertions inside blocking fetch/WebSocket mocks. Fixed with independent teardown checks, counters for every attempted fetch, and a constructible WebSocket trap. Negative controls deliberately swallowed forbidden fetch and WebSocket errors and failed on both providers, while the ordinary suite still passes all 211 tests. Biome's schema URL is aligned to 2.5.15. The final test-hardening commit receives the same CI check before handoff.
+The unchanged solver image passed `npm run test:executor -- sha256:7e4e65ecaffd45149717c8cd0b9e13321088f116b60c5b8b436b90b15bcfeebd --toolchains` on Docker Desktop. A one-off synthetic cross-version journal test generated journals with pre-upgrade `92d08fe` / Pi 0.87.1, then verified identical read-only inspection and restart preservation of solved answers, spent credits and a held reservation with the upgraded code. Offline example config/status commands also passed. GitHub CI passed on Linux and macOS for the upgraded SDK and compatible patches at `39ba549` ([run 38908392973](https://github.com/bendiscz/boc/actions/runs/38908392973)). Final independent diff review found a P2 test-quality gap: SDK error handling could swallow assertions inside blocking fetch/WebSocket mocks. Fixed with independent teardown checks, counters for every attempted fetch, and a constructible WebSocket trap. Negative controls deliberately swallowed forbidden fetch and WebSocket errors and failed on both providers, while the ordinary suite still passes all 211 tests. Biome's schema URL is aligned to 2.5.15. The final test-hardening commit `7ba96e3` also passed Linux/macOS CI ([run 38908939426](https://github.com/bendiscz/boc/actions/runs/38908939426)).
 
 The separate compatible patch increment updates Zod to **4.6.7**, Biome to **2.5.15**, and Node types to **24.19.2**; TypeScript remains **6.0.3**. A second clean install, `npm run check` (211 tests) and `npm audit` all pass with these versions.
 
-**Next concrete action:** arrange the operator-controlled maintenance window for supervised provider validation and deployment. New-model entitlement, native pricing/tiering and calibration remain unverified; do not change the production model. Pi's newer `openai` ChatGPT OAuth path remains a separate migration. The operator-owned SSD migration remains the primary hardware prerequisite.
+### Pi deployment and supervised baseline verification (2026-10-16)
+
+- The operator stopped the service; verified MainPID 0, no other Node process and a clean checkout before deployment. Backed up the previous revision (`81c5fa9`), old dist bundle, lockfile and event config under **Pi-only** `var/deploy/pi-1.3.0-20261016/` (owner-only). No credential files were read, printed or copied. Do not restore stale OAuth tokens on rollback.
+- Fast-forwarded to `7ba96e3`, ran `npm ci --ignore-scripts`, `npm run check` (211/211), `npm audit` (zero findings), and `deploy/rpi/check.sh var/event-2026.config.json --probe` (all checks/toolchains passed). Same pinned solver image; event config SHA-256 matches the pre-deployment backup. SD-card migration remains pending.
+- Sequential current-model (`gpt-6-sol`, `low`) replays of **2019 day 12**, separate private storage per provider, event/per-puzzle limit 100 each (within the standing allowance), at most one attempt and four turns per part, with a three-minute run abort. All four parts were correct on the first proposal, no errors or held reservations. Copilot: **2.58887** native credits (5.8/8.1 seconds per part); Codex: **0.8269** (6.6/8.1 seconds). Charges are derived from usage at the existing configured native rates, not independently reconciled against provider billing. No replay requests contacted AoC.
+  - Configs: `var/upgrade-sdk-1.3.0-{copilot,codex}-20261016.config.json`; storages: `var/bench/upgrade-sdk-1.3.0-{copilot,codex}-20261016`, all on the Pi and ignored.
+- A bounded manual run of the unchanged event config passed provider/AoC readiness and entered waiting at **14:37:42 UTC**; SIGTERM at 20 seconds saved state and exited cleanly (timeout status 124 as expected). `boc alert-test` reported successful ntfy push and healthchecks success ping. The operator still needs to confirm phone/dashboard receipt. An HTTP 502 occurred during the earlier old-service shutdown alert, but the subsequent readiness/test deliveries reported no failure.
+- Event spent/reserved credits remain **0/0 for both providers**. Production model, reasoning, native rates, budgets and solver image are unchanged. No new-model calls or answer submissions were made. No Node/BoC process was left running.
+
+**Next concrete action:** the operator starts `boc.service`; verify its fresh start check and next daily check. New-model entitlement, native pricing/tiering and calibration remain unverified; do not change the production model. Pi's newer `openai` ChatGPT OAuth path remains a separate migration. The operator-owned SSD migration remains the primary hardware prerequisite.
 
 Next operational tasks, in order:
 

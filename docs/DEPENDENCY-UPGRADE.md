@@ -1,6 +1,6 @@
 # Dependency upgrade assessment and plan
 
-Assessed and implementation authorized 2026-10-15. **Pi 1.3.0 is implemented and verified offline; production dependency pins and model/settings are unchanged pending supervised rollout.** Verification details are in FEASIBILITY.md (Pi 1.3.0) and PLAN.md.
+Assessed and implementation authorized 2026-10-15; deployed to the Pi on 2026-10-16. **Pi 1.3.0 passes offline checks and supervised current-model live smoke tests. The service is stopped pending the operator's restart; production model/settings remain unchanged.** Verification details are in FEASIBILITY.md (Pi 1.3.0) and PLAN.md.
 
 ## Recommendation
 
@@ -79,10 +79,10 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 
 ### 5. Deploy and monitor with rollback ready
 
-- [x] Commit/push tested increments, record decisions/evidence in FEASIBILITY.md and PLAN.md, and obtain green CI before deployment (Linux/macOS at `39ba549`; final test-hardening CI is checked again before handoff).
-- [ ] The operator stops `boc.service` on the Pi. Verify it is stopped before any other BoC process or state-changing command; never use the Mac's old credentials.
-- [ ] Record deployed revision/build, image ID and private config backup on the Pi. Preserve journals and credential files in place; do not print or copy their contents to development artifacts.
-- [ ] Deploy with `git pull --ff-only`, `npm ci --ignore-scripts`, and build on Node 24. Run offline config/probe checks, then the approved supervised provider checks/replays on the Pi.
+- [x] Commit/push tested increments, record decisions/evidence in FEASIBILITY.md and PLAN.md, and obtain green CI before deployment (Linux/macOS at `39ba549` and final code `7ba96e3`).
+- [x] The operator stops `boc.service` on the Pi. Verify it is stopped before any other BoC process or state-changing command; never use the Mac's old credentials.
+- [x] Record deployed revision/build, image ID and private config backup on the Pi. Preserve journals and credential files in place; do not print or copy their contents to development artifacts.
+- [x] Deploy with `git pull --ff-only`, `npm ci --ignore-scripts`, and build on Node 24. Run offline config/probe checks, then the approved supervised provider checks/replays on the Pi.
 - [ ] Restart through the operator. Confirm `start check passed`, waiting state, truthful spent/reserved credits, alert delivery and the next daily readiness check. Keep an observation window before considering the rollout complete.
 - [ ] On failure, stop the service and return to the recorded application revision/lockfile/build and compatible config, without resetting journals or budgets. **Do not restore stale OAuth tokens:** refresh-token rotation must survive rollback. An incompatible credential format requires operator reauthorization, not reuse of invalidated credentials. Retain/reconcile unknown charges.
 
@@ -90,4 +90,4 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 
 Done means reproducible pinned installation on Node 24, green offline checks/CI, no known audit findings (or explicitly documented exceptions), preserved safety/recovery behavior, catalog support for the selected new chat models, and separately authorized live evidence before changing production models. Deployment and new-model activation are distinct gates.
 
-**Next concrete task:** arrange the operator-controlled Pi maintenance window for phase 4–5. The offline SDK/patch increments are complete, with 211 passing tests, zero audit findings, Docker probes and cross-version journal verification. CI passed on Linux/macOS at `39ba549`. Final review found and fixed swallowed assertions in network-blocking test callbacks: teardown now independently checks every fetch and WebSocket attempt. Negative controls with deliberately swallowed forbidden calls fail for both providers. Do not change production or start live runs while the service is running; new-model selection/rates and a bounded test allowance must be explicit.
+**Next concrete task:** the operator starts `boc.service`; confirm a new start check, alert receipt and the next daily readiness result. The Pi now has build `7ba96e3`, all 211 tests/audit/probes pass locally and on the Pi, and Linux/macOS CI is green. Both providers passed sequential current-model replays (Copilot 2.58887 native credits, Codex 0.8269; zero held reservations), and a timed manual event run passed readiness. Event spending/configuration remain unchanged. Private rollback evidence is under `var/deploy/pi-1.3.0-20261016/` on the Pi. No new-model calls or answer submissions were made; phase 4's new-model entitlement/pricing/calibration gates remain pending. Never start another BoC process while the service runs.
