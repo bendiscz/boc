@@ -73,7 +73,7 @@
 
 ## Next session: start here
 
-Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D034), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
+Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D035), and the docs listed in AGENTS.md, including RPI.md. Run `npm ci --ignore-scripts` and `npm run check` on the Mac.
 
 **The service is active on Node 26.11.1 / GPT-6.1 Sol, with a passing start check at 2026-10-16 18:07:50 UTC. Do not disturb it or run another credential-using BoC process. Next: observe the daily readiness check around 2026-10-17 18:07 UTC, read-only. See MODEL-NODE-UPGRADE.md.**
 
@@ -98,7 +98,7 @@ The separate compatible patch increment updates Zod to **4.6.7**, Biome to **2.5
 ### Pi deployment and supervised baseline verification (2026-10-16)
 
 - The operator stopped the service; verified MainPID 0, no other Node process and a clean checkout before deployment. Backed up the previous revision (`81c5fa9`), old dist bundle, lockfile and event config under **Pi-only** `var/deploy/pi-1.3.0-20261016/` (owner-only). No credential files were read, printed or copied. Do not restore stale OAuth tokens on rollback.
-- Fast-forwarded to `7ba96e3`, ran `npm ci --ignore-scripts`, `npm run check` (211/211), `npm audit` (zero findings), and `deploy/rpi/check.sh var/event-2026.config.json --probe` (all checks/toolchains passed). Same pinned solver image; event config SHA-256 matches the pre-deployment backup. SD-card migration remains pending.
+- Fast-forwarded to `7ba96e3`, ran `npm ci --ignore-scripts`, `npm run check` (211/211), `npm audit` (zero findings), and `deploy/rpi/check.sh var/event-2026.config.json --probe` (all checks/toolchains passed). Same pinned solver image; event config SHA-256 matches the pre-deployment backup. SD-card use remains acceptable; SSD migration is optional (D035).
 - Sequential current-model (`gpt-6-sol`, `low`) replays of **2019 day 12**, separate private storage per provider, event/per-puzzle limit 100 each (within the standing allowance), at most one attempt and four turns per part, with a three-minute run abort. All four parts were correct on the first proposal, no errors or held reservations. Copilot: **2.58887** native credits (5.8/8.1 seconds per part); Codex: **0.8269** (6.6/8.1 seconds). Charges are derived from usage at the existing configured native rates, not independently reconciled against provider billing. No replay requests contacted AoC.
   - Configs: `var/upgrade-sdk-1.3.0-{copilot,codex}-20261016.config.json`; storages: `var/bench/upgrade-sdk-1.3.0-{copilot,codex}-20261016`, all on the Pi and ignored.
 - A bounded manual run of the unchanged event config passed provider/AoC readiness and entered waiting at **14:37:42 UTC**; SIGTERM at 20 seconds saved state and exited cleanly (timeout status 124 as expected). `boc alert-test` reported successful ntfy push and healthchecks success ping. The operator confirmed receipt of the started, operator-stopped and test-alert phone notifications. The healthchecks ping was accepted, but dashboard confirmation was not reported. An HTTP 502 occurred during the earlier old-service shutdown alert, but the subsequent readiness/test deliveries reported no failure.
@@ -124,17 +124,17 @@ D034 recommends GPT-6.1 Sol on both providers, conditional on smoke/readiness. A
 
 **Restart verified:** active/running (PID 75927) since **2026-10-16 18:07:47 UTC**, start check passed at **18:07:50 UTC**, waiting for day 1; global Node is 26.11.1, event spent/reserved remains 0/0 on both providers. No startup alert delivery error was logged; receipt of this restart notification is not yet confirmed.
 
-**Next concrete action:** observe the next daily readiness check around 2026-10-17 18:07 UTC, read-only, and confirm restart notification receipt. Model switch, global Node upgrade and service restart are complete. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration remains the primary hardware prerequisite.
+**Next concrete action:** observe the next daily readiness check around 2026-10-17 18:07 UTC, read-only, and confirm restart notification receipt. Model switch, global Node upgrade and service restart are complete. Pi's newer `openai` ChatGPT OAuth path remains a separate migration; SSD migration is an optional, non-blocking reliability improvement (D035); the current SD-card host is acceptable for AoC 2026.
 
 Next operational tasks, in order:
 
-1. **SSD migration (the operator, before 1 December).** The Pi runs from the SD card. After cloning the SD card to the SSD (or re-flashing and rerunning `deploy/rpi/setup.sh`, the push scripts, and copying `~boc/boc/var/`), run `check.sh --probe` and confirm that `boc.service` comes back with `start check passed`.
-2. **End-to-end rehearsal (milestone 7)** on the Pi, with the operator's go-ahead and the service stopped:
+1. **End-to-end rehearsal (milestone 7)** on the Pi, with the operator's go-ahead and the service stopped:
    - a replay or one past day through the event config's code path;
    - `boc alert-test`;
    - a check that the healthchecks.io schedule matches the published 2026 calendar.
-3. **A few days before 1 December (milestone 7):** recheck the AoC rules and automation guidance (AOC.md), provider policy, the models, and credit semantics (FEASIBILITY.md). Set the healthchecks.io cron to the event's day range. Apply system updates and reboot the Pi before the event; automatic reboots are off.
-4. **Optional:**
+2. **A few days before 1 December (milestone 7):** recheck the AoC rules and automation guidance (AOC.md), provider policy, the models, and credit semantics (FEASIBILITY.md). Set the healthchecks.io cron to the event's day range. Apply system updates and reboot the Pi before the event; automatic reboots are off.
+3. **Optional (not event-readiness gates):**
+   - **SSD migration**, if a drive becomes available and there is a suitable maintenance window. No deadline; continuing on the SD card does not block rehearsal or participation (D035). Preserve private runtime data/credentials and rerun `check.sh --probe` plus service readiness after any migration. Avoid a rushed storage change near the event.
    - press AoC 2024 day 25 part 2 (a model-free `boc run --days 25` in a 2024 config on the Pi, with the go-ahead and the service stopped);
    - an amd64 `npm run test:linux`;
    - a Codex re-measurement at `low` if the failover ever matters.
@@ -201,7 +201,7 @@ Live runs (provider calls, AoC requests, submissions) spend real credits: start 
 - [ ] Recheck site rules, event calendar, provider policy, models, and credit semantics.
 - [x] Exercise outages, quota exhaustion, process death, unknown charges, duplicate submissions, and expired credentials. (Done 2026-09-29/30, including systemd restart drills on the Pi (RPI.md). Offline drills in `test/drills.test.ts`. Live drills via replay ran on 2026-09-29, found defects A–D, and passed after the D024 fixes (EVALUATION.md). The AoC-side drills A1–A3 ran live on 2026-09-29: an expired session passes after D025, duplicate protection across storages passes, and a crash during submission loses the part (defect G, fixed by D026).)
 - [x] Document installation, credential setup, budget configuration, private data handling, operation, and recovery. (`OPERATOR.md`)
-- [x] Set up the unattended host: a Raspberry Pi 5 with `boc.service`, running since 2026-09-30 (D027, RPI.md). The SSD migration is still pending (the operator).
+- [x] Set up the unattended host: a Raspberry Pi 5 with `boc.service`, running since 2026-09-30 (D027, RPI.md). SSD migration is optional and does not block readiness or participation (D035).
 - [ ] Run an end-to-end rehearsal and obtain any remaining operator-side setup.
 
 ## Verification and handoff discipline

@@ -28,11 +28,11 @@ Files in `deploy/rpi/`:
   - Event model is now `gpt-6.1-sol` on both providers (D034), with verified cache rates and a configured Copilot long-context tier. Unchanged: `reasoning: "low"`, `assumedMaxOutputTokens: 32000`, `sandbox.maxRunSeconds: 240`. Budgets/identities/order are preserved.
   - The build is from `27de39f`, Pi SDK 1.3.0 (D032), with tier-aware accounting (D034). All 216 tests, audit, probes and selected-model smoke pass under the private Node 26.11.1 candidate. Global Node is now 26.11.1; clean install, all 216 tests, audit and full preflight also pass on the installed binary. See MODEL-NODE-UPGRADE.md. Clean install, 211 tests, zero audit findings and `check.sh --probe` all pass on the Pi. Current-model replays passed both parts of a cached day on each provider. A timed manual event run passed readiness and entered waiting; alert-test reported success. See PLAN.md for credits, private evidence and remaining observation.
   - Rollback checkpoint: `var/deploy/pi-1.3.0-20261016/` on the Pi (old revision `81c5fa9`, old dist/lockfile and config; no credential copies). Preserve refreshed credentials and journals when rolling back.
-  - Still to do: move from the SD card to an SSD before 1 December (step 1 of this guide), then `check.sh --probe` and a service restart.
+  - **Optional:** migrate from SD card to SSD if convenient (D035). There is no deadline or readiness dependency; the existing SD-card deployment is acceptable for the event. If migrating, preserve private data/credentials, rerun `check.sh --probe`, and verify service readiness afterward.
 
 ## Hardware
 
-- **Storage:** an **SSD**, either an NVMe drive on an M.2 HAT or a USB 3 SSD, and boot from it. Every BoC journal record is flushed to disk, and an SD card wears out and stalls. `check.sh` flags a system running from the SD card.
+- **Storage:** the current **SD card is supported and acceptable for the event**. An SSD (NVMe on an M.2 HAT or USB 3) is an optional reliability/performance improvement, not a requirement or deadline (D035). Frequent journal flushes can cause SD-card wear and stalls; keep private-data backups and monitor free space/errors. `check.sh` reports SD-card use as an informational note, not a failed check.
 - **Cooling:** the official **active cooler**. Rust and Go builds in the solver containers otherwise throttle the CPU.
 - **Power:** the official 27 W USB-C supply. A UPS HAT is optional, and power loss is safe anyway (D012, D024).
 - **Network:** **Ethernet**. Wi-Fi is not needed and can be disabled.
@@ -40,11 +40,11 @@ Files in `deploy/rpi/`:
 
 ## 1. Operating system
 
-1. In Raspberry Pi Imager, choose **Raspberry Pi OS Lite (64-bit)** and write it to the SSD. In the customization screen, set:
+1. In Raspberry Pi Imager, choose **Raspberry Pi OS Lite (64-bit)** and write it to the SD card or optional SSD. In the customization screen, set:
    - the hostname (for example `boc`);
    - an admin user with **your SSH public key**, and disable password login;
    - the locale and time zone.
-2. Boot the Pi from the SSD and log in over SSH.
+2. Boot the Pi from the chosen storage and log in over SSH.
 3. Clone the repository and run the setup:
 
    ```sh
@@ -96,7 +96,7 @@ The script checks the following. It is offline, except that `--probe` runs synth
 
 - Supported Node.js (26.11.1+ in 26.x, or rollback 24.21.0+ in 24.x) is installed, Docker is reachable, and **Docker's memory limits are supported**.
 - The clock is NTP-synchronized.
-- There is at least 10 GiB free, on a disk other than the SD card.
+- There is at least 10 GiB free. SD-card use is informational only; an SSD is optional and its absence never fails preflight.
 - The config is valid, and the solver image is present.
 - Every private file the config names exists with mode `0600` and belongs to `boc`.
 - With `--probe`: the executor probe with every toolchain. This is also the **bare-metal Linux run** the sandbox verification still lacks (SANDBOX.md).

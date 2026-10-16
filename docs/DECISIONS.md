@@ -219,12 +219,12 @@ On 2026-09-29 the operator decided the two open findings of the live AoC drills 
 
 On 2026-09-29 the operator approved deploying BoC on a dedicated Raspberry Pi 5 (8 GB), set up as described in [RPI.md](RPI.md):
 
-- **Operating system:** Raspberry Pi OS Lite (64-bit) on an SSD, with nothing else on the host. Only SSH is allowed inbound, unattended updates are security-only, and automatic reboots are disabled.
+- **Operating system:** Raspberry Pi OS Lite (64-bit), originally recommended on SSD; D035 makes SSD optional and explicitly accepts the current SD card. Nothing else runs on the host. Only SSH is allowed inbound, unattended updates are security-only, and automatic reboots are disabled.
 - **Runtime:** Docker Engine from Docker's repository, and the official Node.js 24 build. BoC runs as a dedicated `boc` user in the `docker` group, which is root-equivalent: another reason the host is single-purpose.
 - **Service:** systemd with `Restart=on-failure` (60 s), at most 5 starts per hour, and no retry of usage errors (exit 2). It starts only after a synchronized clock and Docker. D024's stale-lock removal makes restarts safe.
 - **Solver image:** transferred with `docker save | docker load`, which keeps the ID, rather than rebuilt, so the host runs the probed image.
 - **Credentials:** moved to the Pi, which then owns them. The development machine must not run BoC with the same credential files again (D022).
-- **Checks before enabling the service:** the memory cgroup, so that solver memory limits apply, is enabled by `setup.sh` if missing; Docker memory-limit support, the 16K page size, NTP, the SSD, and private-file modes are checked by `check.sh`; and the executor probe runs with every toolchain.
+- **Checks before enabling the service:** the memory cgroup, so that solver memory limits apply, is enabled by `setup.sh` if missing; Docker memory-limit support, the 16K page size, NTP and private-file modes are checked by `check.sh`; SD-card storage is an informational note, not a failure (D035); and the executor probe runs with every toolchain.
 
 ## D028 — Decoding letter art: prompt guidance and a preinstalled OCR library
 
@@ -296,4 +296,10 @@ Recommend the new model for both providers, conditional on successful target-run
 Add optional `estimate.longContext` with a threshold and complete native rates. Reservations, cutoffs and minimum-attempt headroom use the per-category worst rates across both tiers; settlement uses the exact reported input total including both cache categories, with the higher tier strictly above the threshold. Do not charge the reasoning subset twice. A flat config retains its old behavior; production Copilot must explicitly configure its tier. Unknown/zero input/output tier rates refuse work. Journals/identities and receipt formats do not change.
 
 The conservative Copilot minimum attempt reservation rises to **78** credits (8K assumed input + 32K output at worst rates, padded by 1.5), versus the former 51. This reduces usable headroom within the unchanged 100-credit puzzle allocation and can trigger earlier failover; it is an intentional safety tradeoff, not a budget increase. The model benchmark itself used a conservative 200KB pre-dispatch context ceiling and remained well below 272K reported input tokens.
+
+## D035 — SSD migration is optional, never an event-readiness gate
+
+The operator clarified that an SSD may not be available in time and must not block AoC participation. The current SD-card deployment is supported and acceptable for production, rehearsal and AoC 2026. SSD migration is a nice-to-have reliability/performance improvement with **no deadline**, not a prerequisite. This supersedes D027's SSD requirement/recommendation wherever it was treated as mandatory.
+
+Retain the existing non-blocking SD-card note in `deploy/rpi/check.sh`; no code change is needed because it already does not fail on SD storage. Free-space, memory-limit, clock, credential-mode and executor safety checks remain mandatory. SD-card wear/stalls remain operational risks: monitor disk space/errors and keep private-data backups without publishing or exposing credentials. If an SSD becomes available, migrate only in an operator-controlled maintenance window, preserve journals/config/credentials, and rerun preflight/toolchain probes plus service readiness. Do not rush a storage migration close to the event.
 
