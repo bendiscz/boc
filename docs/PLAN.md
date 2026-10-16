@@ -85,7 +85,15 @@ Read `AGENTS.md`, `REQUIREMENTS.md`, `DECISIONS.md` (D001–D031), and the docs 
 - **Deploying code to the Pi:** `git pull --ff-only && npm ci --ignore-scripts && npm run build` in `~boc/boc`, then have the operator restart the service (or SIGTERM it as `boc`: systemd restarts it after 60 s). Check `journalctl` for `start check passed`. A new solver image goes over with `deploy/rpi/push-image.sh`, and its ID into the Pi's event config.
 - **Expected in the log:** a `daily check passed` about every 24 hours. The first was due about 24 hours after the 2026-09-30 12:27 CEST start.
 
-Next concrete tasks, in order:
+### Dependency upgrade requested 2026-10-15
+
+The operator requested an assessment and plan, not implementation or live runs. See [Dependency upgrade assessment and plan](DEPENDENCY-UPGRADE.md). The proposed next development task is coordinated Pi **0.87.1 → 1.3.0**, followed by compatible patch updates; keep Node 24 LTS and production settings unchanged. This development task precedes further optional benchmarks; the operator-owned SSD migration remains the primary hardware prerequisite.
+
+Assessment evidence: baseline `npm run check` passed 193 tests on Node 24.21.0. In an isolated tracked-files-only copy with Pi 1.3.0, all 193 runtime tests passed and npm audit reported zero vulnerabilities; type checking found one `AnyModel` incompatibility in `test/support/fake-pi.ts`. No dependency pins, private files, production state, or models were changed. New `gpt-6.1-sol` catalog support is verified statically for both providers, not live entitlement/accounting. Pi's newer `openai` ChatGPT OAuth path is a separate migration; retain the calibrated `openai-codex` identity for this upgrade.
+
+**Next concrete development action:** implement phases 1–3 of the upgrade plan (pins/lockfile, narrow typing migration, real-provider synthetic wire tests and full checks/CI). Live validation and deployment require a separate explicit go-ahead and the service stopped by the operator.
+
+Next operational tasks, in order:
 
 1. **SSD migration (the operator, before 1 December).** The Pi runs from the SD card. After cloning the SD card to the SSD (or re-flashing and rerunning `deploy/rpi/setup.sh`, the push scripts, and copying `~boc/boc/var/`), run `check.sh --probe` and confirm that `boc.service` comes back with `start check passed`.
 2. **End-to-end rehearsal (milestone 7)** on the Pi, with the operator's go-ahead and the service stopped:
