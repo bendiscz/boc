@@ -14,13 +14,13 @@ Baseline on Node 24.21.0: `npm ci --ignore-scripts` and `npm run check` passed a
 
 The baseline audit reports one high-severity vulnerable transitive package, `brace-expansion`, under `pi-coding-agent`. The audit's affected range ends at 5.0.11, with a fix available. Do not blindly run `npm audit fix --force`.
 
-For the assessment, published 1.3.0 tarballs were inspected and a clean **tracked-files-only** archive of BoC was installed in a temporary directory. No private runtime files or credentials were copied. The experiment changed only Pi direct dependencies and matching overrides, and removed the obsolete `chord` override:
+During the initial assessment (before implementation), published 1.3.0 tarballs were inspected and a clean **tracked-files-only** archive of BoC was installed in a temporary directory. No private runtime files or credentials were copied. The experiment changed only Pi direct dependencies and matching overrides, and removed the obsolete `chord` override:
 
 - Installation with `--ignore-scripts` succeeded on Node 24.21.0.
 - `npm audit --json` reported **zero vulnerabilities** for that candidate tree at assessment time.
 - `npm test` passed **193/193 tests**, without application source changes.
 - `npm run typecheck` failed at `test/support/fake-pi.ts:136`: Pi's `Models.getAuth` now accepts `AnyModel`, while the helper accepts only chat `Model<Api>`. Fix the helper narrowly; do not suppress the error with an unchecked cast or weaken the production model allowlist.
-- A complete candidate `npm run check`, real-provider wire tests, Docker probes, CI, and live verification have **not** been completed.
+- At that initial assessment stage, a complete candidate `npm run check`, real-provider wire tests, Docker probes, CI, and live verification had **not** been completed. Subsequent offline implementation results are recorded in FEASIBILITY.md; live verification remains pending.
 
 Sources: npm package metadata/tarballs for `@earendil-works/pi-{ai,agent-core,coding-agent}@1.3.0`; their published declarations and provider implementation; the [Pi changelog](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/CHANGELOG.md). Version and security findings are snapshots, not promises about future releases.
 
@@ -59,7 +59,7 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 
 ### 3. Revalidate safety and compatibility offline
 
-- [ ] Run full `npm run check`, clean-install audit, credential-free CLI/config checks, and CI. Resolve the known lint warning if desired without unrelated cleanup.
+- [x] Run full `npm run check`, clean-install audit, credential-free CLI/config checks, and CI. Resolve the known lint warning if desired without unrelated cleanup.
 - [x] Add offline catalog tests for `gpt-6.1-sol` on both supported providers, alongside the existing `gpt-6-sol` regression tests. Verify chat type, API, reasoning mapping and limits without network or credentials.
 - [x] Add/extend synthetic tests through the **actual new Pi provider implementations**, not only injected fake providers: intercept HTTP locally and verify SSE-only operation, `maxRetries: 0`, actual request count under transient errors, cancellation, output-limit serialization, tool-call round trips, usage/cache/reasoning fields, and terminal errors. No external model calls.
 - [x] Reconfirm Copilot's enforced output cap and Codex's currently assumed/non-enforced cap from target source and wire evidence; adjust estimates only if proven behavior changes.
@@ -79,7 +79,7 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 
 ### 5. Deploy and monitor with rollback ready
 
-- [ ] Commit/push tested increments, record decisions/evidence in FEASIBILITY.md and PLAN.md, and obtain green CI before deployment.
+- [x] Commit/push tested increments, record decisions/evidence in FEASIBILITY.md and PLAN.md, and obtain green CI before deployment (Linux/macOS at `39ba549`; final test-hardening CI is checked again before handoff).
 - [ ] The operator stops `boc.service` on the Pi. Verify it is stopped before any other BoC process or state-changing command; never use the Mac's old credentials.
 - [ ] Record deployed revision/build, image ID and private config backup on the Pi. Preserve journals and credential files in place; do not print or copy their contents to development artifacts.
 - [ ] Deploy with `git pull --ff-only`, `npm ci --ignore-scripts`, and build on Node 24. Run offline config/probe checks, then the approved supervised provider checks/replays on the Pi.
@@ -90,4 +90,4 @@ Classifier/image models and direct OpenAI API billing are out of scope. A matchi
 
 Done means reproducible pinned installation on Node 24, green offline checks/CI, no known audit findings (or explicitly documented exceptions), preserved safety/recovery behavior, catalog support for the selected new chat models, and separately authorized live evidence before changing production models. Deployment and new-model activation are distinct gates.
 
-**Next concrete task:** confirm CI for the completed offline increments, then arrange the operator-controlled Pi maintenance window for phase 4–5. Do not change production or start live runs while the service is running; new-model selection/rates and a bounded test allowance must be explicit.
+**Next concrete task:** arrange the operator-controlled Pi maintenance window for phase 4–5. The offline SDK/patch increments are complete, with 211 passing tests, zero audit findings, Docker probes and cross-version journal verification. CI passed on Linux/macOS at `39ba549`. Final review found and fixed swallowed assertions in network-blocking test callbacks: teardown now independently checks every fetch and WebSocket attempt. Negative controls with deliberately swallowed forbidden calls fail for both providers. Do not change production or start live runs while the service is running; new-model selection/rates and a bounded test allowance must be explicit.

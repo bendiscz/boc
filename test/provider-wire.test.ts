@@ -133,15 +133,27 @@ async function fixture(t: test.TestContext, provider: ProviderId) {
     body: Record<string, unknown>;
     signal: AbortSignal;
   }[] = [];
+  const forbiddenUrls: string[] = [];
+  let fetchAttempts = 0;
+  let websocketAttempts = 0;
+  // SDK error handlers may catch callback throws. Assert independently after
+  // the SDK has finished so even a swallowed violation makes the test fail.
+  t.after(() => assert.deepEqual(forbiddenUrls, [], "Unexpected outbound fetch attempt."));
+  t.after(() => assert.equal(websocketAttempts, 0, "Unexpected WebSocket attempt."));
+  t.after(() => assert.equal(fetchAttempts, requests.length, "Every fetch must be accounted for."));
   let respond: (request: Request) => Response | Promise<Response> = () => sse(events());
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    fetchAttempts++;
     const request = new Request(input, init);
-    // A new auth/telemetry/discovery request is a failure, never a real fetch.
+    // A new auth/telemetry/discovery request is blocked, never a real fetch.
     const expected =
       provider === "github-copilot"
         ? "https://api.individual.githubcopilot.com/responses"
         : "https://chatgpt.com/backend-api/codex/responses";
-    assert.equal(request.url, expected);
+    if (request.url !== expected) {
+      forbiddenUrls.push(request.url);
+      throw new Error("Unexpected outbound fetch blocked.");
+    }
     const bytes = Buffer.from(await request.arrayBuffer());
     const json =
       request.headers.get("content-encoding") === "zstd"
@@ -155,7 +167,12 @@ async function fixture(t: test.TestContext, provider: ProviderId) {
     });
     return respond(request);
   });
-  t.mock.method(globalThis, "WebSocket", () => assert.fail("WebSocket transport is forbidden."));
+  // Must be constructible: an arrow throws before its body can count `new`.
+  function blockedWebSocket() {
+    websocketAttempts++;
+    throw new Error("WebSocket transport is forbidden.");
+  }
+  t.mock.method(globalThis, "WebSocket", blockedWebSocket);
   const order: string[] = [];
   const receipts: AssistantMessage[] = [];
   const charges: Awaited<ReturnType<typeof adapter.meter.actualCharge>>[] = [];
