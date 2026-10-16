@@ -9,7 +9,7 @@ import { AdapterError, createOAuthAdapter } from "./oauth-adapter.ts";
  * "Sign in with ChatGPT" credential through pi-ai's Codex provider, which
  * identifies itself honestly (`originator: pi`, Pi's User-Agent).
  *
- * Findings (pi-ai 0.87.1, see FEASIBILITY.md): the Codex responses API does not
+ * Findings (pi-ai 1.3.0, rechecked offline; see FEASIBILITY.md): the Codex responses API does not
  * send an output-token limit, so estimates use `assumedMaxOutputTokens` and the
  * guard's streaming cutoff bounds runaway responses. Retries come only from
  * `options.maxRetries` (forced to 0) and the WebSocket path is skipped because

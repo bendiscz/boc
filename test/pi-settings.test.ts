@@ -12,6 +12,7 @@ test("Pi settings disable automatic chargeable work and host tools", () => {
   assert.equal(settings.getCacheWarmingMode(), "off");
   assert.equal(settings.getTransport(), "sse");
   assert.equal(settings.getEnableInstallTelemetry(), false);
+  assert.equal(settings.getEnableAnalytics(), false);
   assert.equal(settings.getBlockImages(), true);
 });
 

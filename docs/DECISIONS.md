@@ -271,3 +271,11 @@ On 2026-09-30 the operator asked to benchmark the model's reasoning setting, sin
 - **The event config (operator decision, 2026-09-30):** `reasoning: "low"` for both subscriptions, with `assumedMaxOutputTokens` raised from 8000 to 32000 so that reasoning tokens cannot truncate responses under Copilot's output cap. On 31 Copilot parts, `low` matched the default's accuracy and was about 30% faster and cheaper. On 13 Codex parts it was 37% faster and 62% cheaper, with one extra wrong answer (EVALUATION.md).
   - Budget consequence: one Copilot call now reserves 51 credits, against the per-puzzle limit of 100, so Copilot can start a new call only while the puzzle has spent under 49. The heaviest puzzle so far cost 16. Past that point the part fails over to Codex (D030), whose reservation is 12.6.
 
+## D032 — Coordinated Pi 1.3.0 upgrade; model activation stays separate
+
+On 2026-10-15 the operator approved the dependency upgrade plan (DEPENDENCY-UPGRADE.md). Update the coordinated Pi family to exactly **1.3.0**, retaining Node 24 LTS, TypeScript 6, the BoC-owned agent loop (D015), private-file authentication, existing provider identities and journal formats. This supersedes only the Pi version pin in D008. Remove the obsolete chord override; retain aligned AI/core/TUI overrides and lock the complete resolved graph, including pi-telemetry 1.3.0.
+
+Offline tests through the installed providers establish SSE-only requests, no implicit retries, Copilot's `max_output_tokens`, Codex's continued lack of an enforced cap, and compatible usage fields. The new telemetry helper has no exporter by itself; BoC does not enter the interactive install-ping path and explicitly disables install telemetry and analytics in isolated session tests. No new tools, MCP, resource discovery, compaction or other model operations are enabled.
+
+The SDK catalogs now expose `gpt-6.1-sol` on both supported providers. Do not automatically activate it, inherit API-dollar catalog prices as subscription credits, or migrate `openai-codex` to Pi's newer `openai` ChatGPT OAuth flow. New-model entitlement, pricing/tiering, calibration and production rollout remain separately supervised gates. The production `gpt-6-sol` / `low` configuration and solver image stay unchanged. Existing calibration is historical evidence, not live validation of this SDK upgrade.
+

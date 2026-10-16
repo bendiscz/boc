@@ -45,9 +45,21 @@ Directly fetched GitHub session limits, GitHub enterprise billing, and Codex pri
 
 Do not request a live experiment merely to discover whether overshoot occurs. Establish a safe test allocation and enforceable bounding mechanism first.
 
-## Pi 0.87.1 integration boundary
+## Pi 1.3.0 upgrade verification (2026-10-15, offline only)
 
-Runtime is Node.js 24 LTS (minimum/tested patch 24.21.0); Pi coding-agent, AI, agent-core, TUI, and chord packages are pinned to 0.87.1. The repository lockfile records the resolved dependency graph. TypeScript 6.0.3 compiles ESM; Node's native type stripping runs tests. Package lifecycle scripts are disabled.
+D032 updates the development dependency pin; the production Pi still runs the earlier build until an operator-controlled rollout. See DEPENDENCY-UPGRADE.md for the checklist and gates. On Node 24.21.0 / npm 11.19.0, a clean install, lint, type checking, **211 offline tests**, and build pass. The resolved AI/core/coding-agent/TUI/telemetry family is 1.3.0, with AI/core deduplicated, no chord, and zero npm audit findings at verification time.
+
+`test/provider-wire.test.ts` adds 18 credential-free tests using the actual installed providers and BoC's private-file adapters, with synthetic credentials only and all fetches intercepted (never forwarded). WebSocket construction fails the test. Verified for Copilot and Codex: catalogs retain `gpt-6-sol` and expose `gpt-6.1-sol`; `low` reasoning, provider/API/context/output metadata; SSE payloads; one request on 429, 503 and network errors; rejection of caller fetch/payload/sampling rewrites; usage/cache/reasoning normalization and native-credit derivation with synthetic rates; settlement before tool execution and a second-turn tool-result round trip; abort retaining the uncertain reservation; missing terminal usage charged conservatively; truncation mapped to `length`; unfinished tool calls not executed; and awaited end-listener/idle behavior.
+
+Copilot's Responses path sends `max_output_tokens`; Codex still does not, so the current enforced/assumed-cap distinction is unchanged. The Responses SDK raises output caps below 16 to 16 (production uses 32000); do not interpret a tiny requested cap as a strict provider bound. Reasoning tokens are a subset of output tokens, not charged twice. SDK catalog prices remain API metadata, not authoritative subscription credits; long-context tier validation is still required before new-model activation.
+
+An independent read-only SDK/source review found no blocking regression. `pi-telemetry` has explicit contexts but no exporter/backend; coding-agent install telemetry defaults on, while analytics defaults off. BoC bypasses the interactive ping path and its isolated settings disable both, asserted in tests. No personal Pi resources or ambient auth are used; non-chat operations remain rejected by the test-only runtime facade. The production solver still bypasses `AgentSession`.
+
+A one-off cross-version check created synthetic run/credit journals with revision `92d08fe` and Pi 0.87.1 in a tracked-files-only temporary checkout. The upgraded code's read-only inspection matched exactly and left journal bytes unchanged; reopening preserved a solved answer, 0.4 spent credits and a held reservation of 2. No private artifacts or credentials were used. The Docker executor/toolchain probe passed on Docker Desktop against the unchanged pinned solver image, including session isolation and cleanup. These are **offline** results, not live provider/AoC validation, new-model calibration or production deployment.
+
+## Pi 0.87.1 integration boundary (historical)
+
+At the original feasibility snapshot, runtime was Node.js 24 LTS (minimum/tested patch 24.21.0); Pi coding-agent, AI, agent-core, TUI, and chord packages are pinned to 0.87.1. The repository lockfile records the resolved dependency graph. TypeScript 6.0.3 compiles ESM; Node's native type stripping runs tests. Package lifecycle scripts are disabled.
 
 Read the SDK, settings, model/provider, security, and containerization docs, plus the full-control and credential examples. Relevant source paths below are relative to `node_modules/@earendil-works/pi-coding-agent/`; its AI package is bundled under `node_modules/@earendil-works/pi-ai/`.
 

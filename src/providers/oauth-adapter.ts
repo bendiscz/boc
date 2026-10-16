@@ -82,8 +82,7 @@ export function parseOAuthCredential(text: string, label = "OAuth"): OAuthCreden
   }
   const record = value as Record<string, unknown> | null;
   if (
-    !record ||
-    record.type !== "oauth" ||
+    record?.type !== "oauth" ||
     typeof record.refresh !== "string" ||
     typeof record.access !== "string" ||
     typeof record.expires !== "number"

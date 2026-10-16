@@ -225,10 +225,19 @@ test("runtime facade rejects unsupported operations and unknown providers", asyn
     "streamDeferred",
     "fetchDeferred",
     "cancelDeferred",
+    "generateImages",
+    "classify",
+    "getAvailableOfType",
   ]) {
     assert.throws(() => runtime[operation], /Unsupported/);
   }
   await assert.rejects(async () => f.runtime.checkAuth("openai-codex"));
+  for (const candidate of [
+    { ...FAKE_MODEL, type: "classifier" as const },
+    { ...FAKE_MODEL, type: "image" as const, output: ["image" as const] },
+  ]) {
+    await assert.rejects(async () => f.runtime.getAuth(candidate), /Unsupported.*model type/);
+  }
   assert.throws(() =>
     f.runtime.stream({ ...FAKE_MODEL, provider: "openai-codex" }, { messages: [] }),
   );

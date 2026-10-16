@@ -1,4 +1,5 @@
 import {
+  type AnyModel,
   type Api,
   type AssistantMessage,
   createAssistantMessageEventStream,
@@ -108,7 +109,10 @@ export function fakeRuntime(admission: Admission, transport: ProviderStreams) {
   models.setProvider(provider);
 
   // Provider-level check only: the guard itself is the model allowlist under test.
-  function assertModel(candidate: string | Model<Api>) {
+  function assertModel(candidate: string | AnyModel) {
+    if (typeof candidate !== "string" && candidate.type && candidate.type !== "chat") {
+      throw new Error("Unsupported synthetic model type.");
+    }
     const provider = typeof candidate === "string" ? candidate : candidate.provider;
     if (provider !== FAKE_MODEL.provider) throw new Error("Unknown synthetic provider.");
   }
@@ -153,7 +157,7 @@ export function fakeRuntime(admission: Admission, transport: ProviderStreams) {
       return Reflect.get(target, key);
     },
   });
-  // TEST-ONLY bridge: Pi 0.87.1 requires its concrete, private-constructor runtime
+  // TEST-ONLY bridge: Pi 1.3.0 requires its concrete, private-constructor runtime
   // rather than the supported Models interface. Never ship this cast as a live
   // integration. ModelRuntime.create would install built-ins/ambient auth instead.
   const runtime = facade as unknown as ModelRuntime;

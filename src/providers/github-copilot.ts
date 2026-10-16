@@ -9,7 +9,7 @@ export { AdapterError } from "./oauth-adapter.ts";
 /**
  * GitHub Copilot adapter (D016; calibrated 2026-09-27).
  *
- * Findings (pi-ai 0.87.1, see FEASIBILITY.md): Copilot models use the
+ * Findings (pi-ai 1.3.0, rechecked offline; see FEASIBILITY.md): Copilot models use the
  * anthropic-messages, openai-completions, or openai-responses APIs; all three send
  * the output cap when `maxTokens` is set, create SDK clients with maxRetries 0,
  * and retry only via `options.maxRetries` (forced to 0). No per-call credit figure
